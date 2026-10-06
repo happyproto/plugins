@@ -1,0 +1,18 @@
+{
+  "extends": "semantic-release-monorepo",
+  "branches": ["main"],
+  "tagFormat": "happyview-xrpc-v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/exec", {
+      "prepareCmd": "cargo build --release --target wasm32-unknown-unknown -p happyview-xrpc && jq '.version = \"${nextRelease.version}\"' manifest.json > manifest.tmp && mv manifest.tmp manifest.json"
+    }],
+    ["@semantic-release/github", {
+      "assets": [
+        {"path": "../../../target/wasm32-unknown-unknown/release/happyview_xrpc.wasm", "name": "happyview-xrpc.wasm", "label": "XRPC Library Plugin WASM"},
+        {"path": "manifest.json", "name": "manifest.json", "label": "Plugin Manifest"}
+      ]
+    }]
+  ]
+}

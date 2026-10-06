@@ -1,0 +1,8 @@
+case("and_or_xor", function() return 6 & 3, 6 | 3, 6 ~ 3, ~0, ~5 end)
+case("shifts", function() return 1 << 4, 256 >> 4, 1 << 63, 1 << 64, -1 >> 1, 1 << -1, 2 >> -1 end)
+case("float_operand", function() return 3.0 & 1, 2^53 | 0 end)
+case("float_no_int_rep", function() return 1.5 & 1 end)
+case("string_operand", function() return "3" & 1 end)
+case("precedence", function() return 1 | 2 ~ 3 & 4, 1 << 2 + 1, 5 & 3 == 1 end)
+case("meta_band", function() return setmetatable({}, { __band = function() return "band" end }) & 1 end)
+return report()

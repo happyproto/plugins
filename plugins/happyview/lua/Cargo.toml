@@ -1,0 +1,34 @@
+[package]
+name = "happyview-lua"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+happyview-plugin-sdk.workspace = true
+# PUC Lua 5.4.8, vendored: `lua-src`'s wasi arm is what makes the C build work
+# on this target, and `serialize` is what keeps the JSON rules the same serde
+# calls the host makes rather than a second implementation of them.
+mlua = { version = "=0.12.0", features = ["lua54", "vendored", "serialize"] }
+# Named directly so this crate's build script is a direct dependent of the
+# crate that declares `links = "lua"`, which is the only way cargo hands it
+# the vendored Lua's include directory.
+mlua-sys = { version = "=0.11.0", features = ["lua54"] }
+serde_json = "1"
+# The same formatter and parser the host's `internal.time` uses, so an ISO
+# 8601 string crosses unchanged. No `clock` feature: the clock is WASI's.
+chrono = { version = "0.4", default-features = false, features = ["alloc", "now"] }
+# `random_get`, which the clock id of a TID needs and `std` exposes no way to
+# reach.
+getrandom = "0.3"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+regex = "1"
+wasmparser = "0.236"

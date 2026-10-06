@@ -1,0 +1,274 @@
+== attribs
+gc_close = true
+const = 5<integer>
+== bitwise
+and_or_xor = 2<integer> | 7<integer> | 5<integer> | -1<integer> | -6<integer>
+shifts = 16<integer> | 16<integer> | -9223372036854775808<integer> | 0<integer> | 9223372036854775807<integer> | 0<integer> | 4<integer>
+float_operand = 1<integer> | 9007199254740992<integer>
+float_no_int_rep ! "script:66: number has no integer representation"
+string_operand ! "script:67: attempt to perform bitwise operation on a string value (constant '3')"
+precedence = 3<integer> | 8<integer> | true
+meta_band = "band"
+== coroutines
+basic = 2<integer> | 20<integer> | "dead" | false | "cannot resume dead coroutine"
+wrap = 1<integer> | 2<integer> | 3<integer>
+wrap_iterator = 10<integer>
+error_in_coroutine = false | 7<integer> | "dead"
+yield_across_pcall = "y" | true | 42<integer>
+isyieldable_running = true | false | true
+yield_outside ! "attempt to yield from outside a coroutine"
+close = true | "dead"
+wrap_dead = false | "cannot resume dead coroutine"
+== errors
+error_string = false | "boom"
+error_string_pos = false | "string" | true | true
+error_level0 = false | "plain"
+error_level2 = false | true
+error_table = false | "table" | "NO_SESSION" | "no session"
+error_table_identity = true
+error_nil = false | nil
+error_number = false | 42<integer>
+error_with_tostring_meta = false | "custom err"
+pcall_returns = true | 1<integer> | 2<integer> | 3<integer>
+pcall_nonfunction = false | "attempt to call a nil value"
+nested_pcall = true | false | "x"
+rethrow = false | 1<integer>
+xpcall_handler = false | "handled: bad"
+xpcall_args = true | 3<integer>
+assert_ok = 1<integer> | "v"
+assert_fail_msg = false | "assert msg"
+assert_fail_default = false | "assertion failed!"
+assert_fail_table = false | 1<integer>
+runtime_msg_index = "attempt to index a nil value (local 'record')"
+runtime_msg_field = "attempt to index a nil value (field 'record')"
+runtime_msg_global = "attempt to call a nil value (global 'undefined_fn')"
+runtime_msg_upvalue = "attempt to index a nil value (upvalue 'up')"
+runtime_msg_concat = "attempt to concatenate a nil value (local 's')"
+runtime_msg_arith = "attempt to perform arithmetic on a nil value (field 'count')"
+runtime_msg_compare = "attempt to compare table with number"
+runtime_msg_badarg = "bad argument #1 to 'string.rep' (string expected, got no value)"
+runtime_msg_badarg2 = "bad argument #1 to 'string.sub' (string expected, got table)"
+runtime_msg_badarg_method = "bad argument #1 to 'rep' (number expected, got table)"
+stack_overflow = false | true
+tostring_error_in_concat = false | "script:93: attempt to concatenate a table value"
+== goto_stmt
+continue = {1=1<integer>,2=3<integer>,3=5<integer>}
+nested_break = "2x2"
+backward = 3<integer>
+== loop_var_assign
+assign_loop_var = {1=2<integer>,2=4<integer>,3=6<integer>}
+== metatables
+index_table = "hi" | nil | nil
+index_function = "x!" | "1!"
+index_chain = 1<integer>
+newindex_function = {1="a",2="b"} | 2<integer>
+newindex_table = nil | 1<integer>
+newindex_error ! "script:68: cannot assign to internal field '_uri'"
+call = 3<integer> | true
+call_varargs = 0<integer> | 2<integer> | nil | nil
+call_chain = true | "inner"
+tostring = "Record(x)" | "v=Record(x)"
+tostring_nonstring = "42"
+name = "MyType: "
+concat = "cat" | "cat" | "cat"
+eq = true | false | false | false
+lt_le = true | true | false | false
+le_without_le = true
+arith = "add" | "add" | "unm" | "idiv" | "mod"
+len = 7<integer>
+metatable_field = "locked" | false | "cannot change a protected metatable"
+getmetatable_string = true | true
+index_nil_error ! "script:83: attempt to index a nil value (local 't')"
+index_nil_field_error ! "script:84: attempt to index a nil value (field 'a')"
+call_nil_error ! "script:85: attempt to call a nil value (field 'nope')"
+call_nil_method_error ! "script:86: attempt to call a nil value (method 'nope')"
+index_number_error ! "script:87: attempt to index a number value (local 'n')"
+inheritance = 42<integer>
+global_guard = false | nil
+== numbers
+math_type = "integer" | "float" | nil | "float" | "integer" | "float" | "integer" | "float"
+int_div = 3<integer> | -4<integer> | -4<integer> | 3.0<float> | -4.0<float> | inf<float> | -inf<float>
+int_div_zero ! "script:65: attempt to divide by zero"
+mod = 1<integer> | 2<integer> | -2<integer> | 1.5<float> | 0.5<float> | 5.0<float> | inf<float>
+mod_zero ! "script:67: attempt to perform 'n%0'"
+mod_zero_float = true
+div = 3.5<float> | 2.0<float> | 0.33333333333333<float>
+pow = 1024.0<float> | 1.4142135623731<float> | 0.5<float> | true
+overflow_wrap = true | -2<integer> | 9223372036854775807<integer> | -9223372036854775808<integer>
+maxmin = 9223372036854775807<integer> | -9223372036854775808<integer>
+float_int_eq = true | true | false | true | true | false
+table_key_norm = "a" | "b" | 2<integer> | 3<integer> | true
+tointeger = 3<integer> | nil | 8<integer> | nil | nil
+floor_ceil = 3<integer> | 4<integer> | -4<integer> | 4611686018427387904<integer> | 1e+100<float> | "float"
+misc = 3<integer> | 3.5<float> | 2.5<float> | 1<integer> | 4.0<float> | 1<integer> | -1<integer> | 3.1415926535898<float> | inf<float>
+abs_minint = -9223372036854775808<integer>
+ult = true | false
+fmod_zero ! "script:80: bad argument #2 to 'fmod' (zero)"
+modf = 3<integer> | -3<integer> | 5<integer> | inf<float> | 0.0<float>
+trig_exp = 0.0<float> | 1.0<float> | 1.0<float> | 3.0<float> | 2.0<float> | 0.0<float>
+literals = 255<integer> | 9223372036854775807<integer> | -1<integer> | 16.0<float> | 100.0<float> | 0.5<float> | 3.0<float> | 10.5<float> | 9223372036854775807<integer> | 9.2233720368548e+18<float>
+float_to_string = 1e+15<float> | 1e+16<float> | 123456789012345678<integer> | 0.1<float> | 0.33333333333333<float> | 100.0<float> | -0.0<float> | 3.1415926535898<float> | 9.2233720368548e+18<float> | inf<float>
+num_str_coerce_concat = "10" | "10.0" | "2147483648.0"
+for_int = 28<integer>
+for_float = {1=1.0<float>,2=1.5<float>,3=2.0<float>}
+for_overflow = 2<integer>
+for_zero_step ! "script:89: 'for' step is zero"
+arith_on_nil ! "script:90: attempt to perform arithmetic on a nil value"
+arith_on_string_bad ! "script:91: attempt to add a 'number' with a 'string'"
+compare_mixed ! "script:92: attempt to compare number with string"
+float_int_conv_err = 1<integer>
+random_range = "integer" | true
+== os_time
+time_type = "integer" | true
+time_table = 1789648215<integer>
+time_table_default_hour = 1767268800<integer>
+time_normalise = 1804420800<integer>
+time_missing_field ! "script:67: field 'month' missing in date table"
+date_utc_fmt = "2026-09-10T00:26:40Z"
+date_utc_table = {day=10<integer>,hour=0<integer>,isdst=false,min=26<integer>,month=9<integer>,sec=40<integer>,wday=5<integer>,yday=253<integer>,year=2026<integer>}
+date_fields = "Thu Thursday Sep September 10 253 AM 26 %"
+date_c_x = "Thu Sep 10 00:26:40 2026 | 09/10/26 | 00:26:40 | 09/10/26 | 2026-09-10 | 00:26:40 | 00:26"
+date_default_fmt_type = "string"
+date_invalid_conv ! "script:73: bad argument #1 to 'date' (invalid conversion specifier '%Ez')"
+date_invalid_conv2 ! "script:74: bad argument #1 to 'date' (invalid conversion specifier '%Q')"
+date_epoch = "1970-01-01 00:00:00"
+date_negative = "1969-12-31"
+difftime = 6.0<float> | "float"
+clock_type = "float" | true
+roundtrip = true
+== strings_basic
+sub = "ell" | "llo" | "hello" | ""
+upper_lower = "ABC" | "abc"
+len_hash = 6<integer> | 3<integer>
+rep = "ababab" | "ab-ab-ab" | ""
+reverse = "cba"
+byte_char = 65<integer> | 97<integer> | 98<integer> | 99<integer>
+char = "Hi"
+concat_num = "12" | "1.5x" | "n=3"
+coerce_arith = 15<integer> | 12<integer> | 16<integer> | 10.0<float>
+compare = true | false | true | true
+escapes = "ABAH€" | "ab" | 2<integer>
+long_string = "line1
+line2" | "a]]b"
+tostring = "nil" | "true" | "12" | "12.0" | "-0.0" | "1e+100" | "9.007199254741e+15" | "inf" | "-inf"
+tostring_nan = true
+tonumber = 12<integer> | 12.5<float> | 16.0<float> | 100.0<float> | 35<integer> | 255<integer> | nil | nil | nil | nil | nil
+string_index_method = 3<integer> | function: 0x1041c89dc | "xx"
+== strings_format
+d = "42    42 42   | 00042 +42"
+d_float_int = "3"
+d_float_frac ! "script:65: bad argument #2 to 'format' (number has no integer representation)"
+s = "x      right left      | tr"
+s_nonstring = "1 1.5 true nil"
+s_tostring_meta = "custom"
+q = ""he said \"hi\"\
+""
+q_num = "1 0x1p-1"
+f = "3.141590 3.14      3.142 2"
+g = "1e+20 0.1 100000 1e-05"
+e = "1.234568e+04 1.20E-04"
+x = "ff FF 0xff 000000ff"
+x_negative = "ffffffffffffffff"
+o_c = "10 Hi"
+a = "0x1p+0"
+i = "7"
+percent = "100%"
+missing_arg ! "script:80: bad argument #2 to 'format' (no value)"
+bad_spec ! "script:81: invalid conversion '%y' to 'format'"
+string_to_d = "10"
+method_form = "k=1"
+iso8601 = "2026-09-17T04:05:06Z"
+== strings_patterns
+find_plain = 2<integer> | 3<integer> | nil | 1<integer> | 0<integer>
+find_init = 7<integer> | nil | 3<integer> | 3<integer>
+find_captures = 1<integer> | 9<integer> | "key" | "value"
+match_aturi = "did:plc:abc" | "app.bsky.feed.post" | "3kabc"
+match_literal_prefix = "self" | nil
+match_classes = "x1_y" | "2026" | "09" | "17" | "10" | "20" | "30"
+match_position_capture = 3<integer> | 5<integer>
+match_frontier = "quick" | "HELLO WORLD" | 2<integer>
+match_balanced = "(a(b)c)"
+match_backref = """ | "hi"
+match_sets = "abc" | "-123" | "]" | "-"
+match_quantifiers = "" | "aaa" | "aaa" | "a" | ""
+match_anchor = nil | "c" | "a$c"
+gsub_string = "hell0 w0rld" | "-h-e-l-l-o-" | "aabbcc" | "world hello" | 1<integer>
+gsub_limit = "bbaa" | 2<integer>
+gsub_table = "Ann is 30" | 2<integer>
+gsub_function = "a<1>b<2>" | "abc" | "abc" | 1<integer>
+gsub_percent = "50 percent" | "a%b" | 1<integer>
+gsub_bad_repl ! "script:81: invalid capture index %2"
+gmatch = {1="a1",2="b2"}
+gmatch_words = {1="one",2="two",3="three"}
+gmatch_empty = 4<integer>
+malformed_pattern ! "script:85: malformed pattern (missing ']')"
+malformed_pattern2 ! "script:86: malformed pattern (ends with '%')"
+url_encode = "a%20b%26c"
+split = {1="a",2="b",3="",4="c"}
+== tables
+insert_remove = {1=1<integer>,2=2<integer>,3=3<integer>} | 4<integer> | 0<integer> | nil | 3<integer>
+insert_bad_pos ! "script:64: bad argument #2 to 'insert' (position out of bounds)"
+insert_wrong_args ! "script:65: wrong number of arguments to 'insert'"
+concat = "1, 2, x, 2.5" | "" | "b-c" | "a"
+concat_bad ! "script:67: invalid value (table) at index 2 in table for 'concat'"
+sort_default = {1=-1<integer>,2=1<integer>,3=2.5<float>,4=3<integer>}
+sort_strings = {1="C",2="a",3="b"}
+sort_cmp = {1=3<integer>,2=2<integer>,3=1<integer>}
+sort_by_field = 1<integer> | 2<integer> | 3<integer>
+sort_mixed_err ! "attempt to compare string with number"
+sort_invalid_order = true
+unpack_pack = 3<integer> | 1<integer> | 2<integer> | 2<integer> | 3<integer>
+move = {1=1<integer>,2=1<integer>,3=2<integer>,4=3<integer>} | {1=1<integer>,2=2<integer>}
+length_border = 3<integer> | 0<integer> | 2<integer> | 3<integer>
+next_pairs = "a" | 1<integer> | nil | nil
+next_invalid_key ! "invalid key to 'next'"
+pairs_order_array = {1="1:10",2="2:20",3="3:30"}
+pairs_modify_during = nil
+ipairs_stops_at_nil = 2<integer>
+ipairs_meta_index = 60<integer>
+pairs_meta = {1="1one"}
+nil_key ! "script:84: table index is nil"
+nan_key ! "script:85: table index is NaN"
+nil_index_read = nil
+constructor = 4<integer> | 2<integer> | "b" | 1<integer>
+select = 0<integer> | 2<integer> | "b" | "c"
+select_bad ! "script:89: bad argument #1 to 'select' (index out of range)"
+rawequal_rawlen = 99<integer> | 2<integer> | 3<integer> | true | true
+== utf8_misc
+utf8_char_len = "H€😀" | 3<integer> | nil | 1<integer>
+utf8_codepoint = 104<integer> | 8364<integer>
+utf8_codes = {1="1:97",2="2:8364"}
+utf8_offset = 5<integer> | 14<integer>
+type_names = "nil" | "number" | "string" | "table" | "function" | "boolean"
+tostring_table_prefix = "table: " | "function:"
+version = "Lua 5.4"
+g_self = true | true
+env_upvalue = "nil"
+integer_string_keys_json_shape = true
+print_exists = "function"
+load_exists = "function" | "nil" | "function" | "function"
+load_chunk = 2<integer>
+load_env = 5<integer>
+load_syntax_error = nil | "string"
+== varargs_closures
+vararg_basic = 0<integer> | 1<integer> | 2<integer> | 2<integer> | 1<integer> | nil
+vararg_table = 3<integer> | "b"
+vararg_pack_n = 3<integer>
+vararg_passthrough = true | "xyz"
+vararg_adjust = 1<integer> | 1<integer>
+vararg_middle = 1<integer> | "end"
+multi_return_adjust = 1<integer> | 2<integer> | 3<integer> | nil | 2<integer> | 1<integer>
+closure_counter = 3<integer> | 1<integer>
+closure_loop_fresh = 1<integer> | 2<integer> | 3<integer>
+closure_shared_upvalue = 2<integer>
+iife_multi = 1<integer> | 2<integer> | 3<integer>
+recursion_local = 2432902008176640000<integer> | -4249290049419214848<integer>
+tail_call_deep = "done"
+method_sugar = 6<integer>
+and_or = "d" | nil | "zero truthy" | "empty truthy" | nil | "x"
+multiple_assign = 2<integer> | 1<integer> | 2<integer> | 20<integer> | 2<integer>
+repeat_scope = 3<integer>
+numeric_for_var_assign = {1=2<integer>,2=4<integer>,3=6<integer>}
+shadowing = 1<integer>
+integer_keys_string_keys = "int" | "str"
+long_comment = "ok"

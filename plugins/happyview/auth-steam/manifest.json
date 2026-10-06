@@ -1,0 +1,21 @@
+{
+  "id": "happyview-auth-steam",
+  "name": "Steam",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "auth",
+  "icon_url": "https://store.steampowered.com/favicon.ico",
+  "auth_type": "openid",
+  "required_secrets": [
+    {
+      "key": "PLUGIN_HAPPYVIEW_AUTH_STEAM_API_KEY",
+      "name": "Steam Web API Key",
+      "description": "Get your API key at steamcommunity.com/dev/apikey"
+    }
+  ],
+  "description": "Link your Steam account.",
+  "capabilities": ["network:request:unrestricted", "secrets:read"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-auth-steam.wasm"
+}

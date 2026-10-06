@@ -1,0 +1,13 @@
+{
+  "id": "happyview-sql",
+  "name": "SQL",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.sql",
+  "description": "Raw SQL and a table builder over the operator's own tables.",
+  "capabilities": ["database:read", "database:write"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-sql.wasm"
+}

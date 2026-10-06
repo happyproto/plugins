@@ -1,0 +1,13 @@
+{
+  "id": "happyview-linked-repos",
+  "name": "Linked Repos",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.linked_repos",
+  "description": "Record writes, blob uploads and XRPC calls through admin-linked repos.",
+  "capabilities": ["linked_repos:use"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-linked-repos.wasm"
+}

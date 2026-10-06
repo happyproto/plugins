@@ -1,0 +1,20 @@
+case("sub", function() return string.sub("hello", 2, 4), ("hello"):sub(-3), ("hello"):sub(0), ("hello"):sub(10) end)
+case("upper_lower", function() return string.upper("aBc"), ("aBc"):lower() end)
+case("len_hash", function() return #"héllo", string.len("abc") end)
+case("rep", function() return string.rep("ab", 3), string.rep("ab", 3, "-"), string.rep("x", 0) end)
+case("reverse", function() return string.reverse("abc") end)
+case("byte_char", function() return string.byte("A"), string.byte("abc", 1, -1) end)
+case("char", function() return string.char(72, 105) end)
+case("concat_num", function() return 1 .. 2, 1.5 .. "x", "n=" .. 10 // 3 end)
+case("coerce_arith", function() return "10" + 5, "3" * "4", "0x10" + 0, "1e1" + 0 end)
+case("compare", function() return "a" < "b", "a" < "B", "" < "a", "10" < "9" end)
+case("escapes", function() return "\65\066\x41\u{48}\u{20AC}", "a\z
+      b", #"\0x" end)
+case("long_string", function() return [[
+line1
+line2]], [==[a]]b]==] end)
+case("tostring", function() return tostring(nil), tostring(true), tostring(12), tostring(12.0), tostring(-0.0), tostring(1e100), tostring(2^53), tostring(1/0), tostring(-1/0) end)
+case("tostring_nan", function() local n = tostring(0/0); return n == "nan" or n == "-nan" end)
+case("tonumber", function() return tonumber("12"), tonumber("12.5"), tonumber("  0x1p4  "), tonumber("1e2"), tonumber("z", 36), tonumber("ff", 16), tonumber("8", 8), tonumber(""), tonumber("1 2"), tonumber("0x"), tonumber(nil) end)
+case("string_index_method", function() local s = "abc"; return s:len(), s.len, ("x"):rep(2) end)
+return report()

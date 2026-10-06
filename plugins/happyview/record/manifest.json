@@ -1,0 +1,13 @@
+{
+  "id": "happyview-record",
+  "name": "Record",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.record",
+  "description": "Record writes as the calling user, local index writes, and lexicon validation.",
+  "capabilities": ["caller:write", "records:read", "records:write"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-record.wasm"
+}

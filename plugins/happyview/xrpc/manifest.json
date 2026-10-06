@@ -1,0 +1,13 @@
+{
+  "id": "happyview-xrpc",
+  "name": "XRPC",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.xrpc",
+  "description": "XRPC query and procedure calls as the calling user.",
+  "capabilities": ["caller:read", "caller:call"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-xrpc.wasm"
+}

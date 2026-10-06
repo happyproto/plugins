@@ -1,0 +1,25 @@
+{
+  "id": "happyview-auth-microsoft",
+  "name": "Microsoft",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "auth",
+  "auth_type": "oauth2",
+  "required_secrets": [
+    {
+      "key": "PLUGIN_HAPPYVIEW_AUTH_MICROSOFT_CLIENT_ID",
+      "name": "Azure Client ID",
+      "description": "From your Azure AD app registration"
+    },
+    {
+      "key": "PLUGIN_HAPPYVIEW_AUTH_MICROSOFT_CLIENT_SECRET",
+      "name": "Azure Client Secret",
+      "description": "From your Azure AD app registration"
+    }
+  ],
+  "description": "Link your Microsoft account for Xbox and other Microsoft services.",
+  "capabilities": ["network:request:unrestricted", "secrets:read"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-auth-microsoft.wasm"
+}

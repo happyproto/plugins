@@ -1,0 +1,26 @@
+{
+  "id": "happyview-auth-itch",
+  "name": "itch.io",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "auth",
+  "icon_url": "https://itch.io/favicon.ico",
+  "auth_type": "oauth2",
+  "required_secrets": [
+    {
+      "key": "PLUGIN_HAPPYVIEW_AUTH_ITCH_CLIENT_ID",
+      "name": "OAuth Client ID",
+      "description": "From your itch.io OAuth application"
+    },
+    {
+      "key": "PLUGIN_HAPPYVIEW_AUTH_ITCH_CLIENT_SECRET",
+      "name": "OAuth Client Secret",
+      "description": "From your itch.io OAuth application"
+    }
+  ],
+  "description": "Link your itch.io account.",
+  "capabilities": ["network:request:unrestricted", "secrets:read"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-auth-itch.wasm"
+}

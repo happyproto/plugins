@@ -1,0 +1,165 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  WASI_SDK_VERSION: "34.0"
+
+jobs:
+  fmt:
+    runs-on: depot-ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+
+  clippy:
+    runs-on: depot-ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+
+  build:
+    runs-on: depot-ubuntu-24.04
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Build all plugins
+        run: cargo build --release --target wasm32-unknown-unknown
+
+
+  # The interpreter is the one member that is not pure Rust on
+  # `wasm32-unknown-unknown`: it vendors PUC Lua, which `lua-src` compiles with
+  # clang from wasi-sdk. It gets a job of its own rather than widening the two
+  # above, because a 600 MB toolchain download is a cost the other fourteen
+  # plugins do not need and because a failure here should name the interpreter
+  # rather than look like the workspace is broken.
+  interpreter:
+    runs-on: depot-ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache wasi-sdk
+        id: wasi-sdk
+        uses: actions/cache@v4
+        with:
+          path: /opt/wasi-sdk
+          key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
+
+      - name: Install wasi-sdk
+        if: steps.wasi-sdk.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION%%.*}/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux.tar.gz"
+          mkdir -p /opt/wasi-sdk
+          tar -xzf /tmp/wasi-sdk.tar.gz --strip-components=1 -C /opt/wasi-sdk
+
+      - name: Add WASI target
+        run: rustup target add wasm32-wasip1
+
+      # `/opt/wasi-sdk` is where `.cargo/config.toml` already points, so the
+      # three `CC`/`AR`/`CFLAGS` variables and the linker's `-L` need no
+      # setting here. Only `CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS` would, and
+      # plain `RUSTFLAGS` must not be used for it: it is not target-scoped, and
+      # a `-L` into the wasi sysroot breaks every host build in the same job,
+      # the crate's own tests included.
+      - name: Clippy
+        run: cargo clippy -j 2 -p happyview-lua --target wasm32-wasip1 -- -D warnings
+
+      # Native, where the crate's logic is testable: the conformance corpus,
+      # the 257 Lua 5.4 probes, and the module's own import and export sets.
+      #
+      # `TZ` because `os.time` reads a table as local time, as PUC does, and
+      # the recorded Lua 5.4 reference was taken under UTC. The module itself
+      # has no zone to read; only a native run takes the machine's.
+      - name: Test
+        env:
+          TZ: UTC
+        run: cargo test -j 2 -p happyview-lua
+
+      - name: Build
+        run: cargo build -j 2 --release -p happyview-lua --target wasm32-wasip1
+
+      # The import and export gate reads the built module, so it is only
+      # meaningful after the build — which is why it runs again here. The path
+      # is given rather than inferred, and checked first: absent, the gate
+      # skips, and a gate that skips in CI is worse than no gate.
+      - name: Check the module's interface
+        env:
+          HAPPYVIEW_LUA_WASM: target/wasm32-wasip1/release/happyview_lua.wasm
+        run: |
+          test -f "$HAPPYVIEW_LUA_WASM"
+          cargo test -j 2 -p happyview-lua --test module_interface
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, interpreter]
+    runs-on: depot-ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    strategy:
+      matrix:
+        plugin:
+          [
+            auth-steam,
+            auth-xbox,
+            auth-microsoft,
+            auth-itch,
+            http,
+            db,
+            sql,
+            backlinks,
+            record,
+            xrpc,
+            atproto,
+            linked-repos,
+            jobs,
+            spaces,
+            lua,
+          ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install modules
+        run: npm install
+
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
+
+      # Only `happyview-lua` needs either of these, and its `.releaserc.json`
+      # is the one that builds for `wasm32-wasip1`.
+      - name: Add WASI target
+        if: matrix.plugin == 'lua'
+        run: rustup target add wasm32-wasip1
+
+      - name: Restore wasi-sdk
+        if: matrix.plugin == 'lua'
+        uses: actions/cache@v4
+        with:
+          path: /opt/wasi-sdk
+          key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
+
+      - name: Release happyview/${{ matrix.plugin }}
+        working-directory: plugins/happyview/${{ matrix.plugin }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes semantic-release

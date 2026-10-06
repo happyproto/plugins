@@ -1,0 +1,18 @@
+{
+  "extends": "semantic-release-monorepo",
+  "branches": ["main"],
+  "tagFormat": "happyview-http-v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/exec", {
+      "prepareCmd": "cargo build --release --target wasm32-unknown-unknown -p happyview-http && jq '.version = \"${nextRelease.version}\"' manifest.json > manifest.tmp && mv manifest.tmp manifest.json"
+    }],
+    ["@semantic-release/github", {
+      "assets": [
+        {"path": "../../../target/wasm32-unknown-unknown/release/happyview_http.wasm", "name": "happyview-http.wasm", "label": "HTTP Library Plugin WASM"},
+        {"path": "manifest.json", "name": "manifest.json", "label": "Plugin Manifest"}
+      ]
+    }]
+  ]
+}

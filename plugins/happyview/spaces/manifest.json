@@ -1,0 +1,13 @@
+{
+  "id": "happyview-spaces",
+  "name": "Spaces",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.spaces",
+  "description": "Read and write permissioned spaces: records, membership and invites.",
+  "capabilities": ["spaces:read", "spaces:write"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-spaces.wasm"
+}

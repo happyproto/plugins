@@ -1,0 +1,13 @@
+{
+  "id": "happyview-jobs",
+  "name": "Jobs",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.jobs",
+  "description": "Enqueue background jobs for the job worker.",
+  "capabilities": ["jobs:create"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-jobs.wasm"
+}

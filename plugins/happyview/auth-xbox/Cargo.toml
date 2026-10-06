@@ -1,0 +1,13 @@
+[package]
+name = "happyview-auth-xbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+happyview-plugin-sdk.workspace = true
+serde.workspace = true

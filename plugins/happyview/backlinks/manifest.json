@@ -1,0 +1,13 @@
+{
+  "id": "happyview-backlinks",
+  "name": "Backlinks",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.backlinks",
+  "description": "Records that reference a given AT URI.",
+  "capabilities": ["records:read"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-backlinks.wasm"
+}

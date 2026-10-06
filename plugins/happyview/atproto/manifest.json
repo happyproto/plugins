@@ -1,0 +1,13 @@
+{
+  "id": "happyview-atproto",
+  "name": "Atproto",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.atproto",
+  "description": "AT Protocol service resolution, blob download, label lookup, and attestation signing.",
+  "capabilities": ["atproto:read", "attest:sign"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-atproto.wasm"
+}

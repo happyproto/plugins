@@ -1,0 +1,13 @@
+{
+  "id": "happyview-http",
+  "name": "HTTP Client",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.http",
+  "description": "Outbound HTTP requests: get, post, put, patch, delete, head.",
+  "capabilities": ["network:request:unrestricted"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-http.wasm"
+}
