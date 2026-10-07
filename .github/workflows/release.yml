@@ -11,20 +11,20 @@ env:
 
 jobs:
   fmt:
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
 
   clippy:
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: rustup target add wasm32-unknown-unknown
       - run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
   build:
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-24.04
     needs: [fmt, clippy]
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
   # plugins do not need and because a failure here should name the interpreter
   # rather than look like the workspace is broken.
   interpreter:
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +102,7 @@ jobs:
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build, interpreter]
-    runs-on: depot-ubuntu-24.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       issues: write
