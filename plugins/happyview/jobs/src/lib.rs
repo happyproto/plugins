@@ -11,8 +11,8 @@ use alloc::string::{String, ToString};
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    json, library_plugin, ApiExport, ApiSurface, CallContext, JobCreate, PluginError, PluginInfo,
-    Value,
+    json, library_plugin, ApiExport, ApiSurface, CallContext, JobCreate, JobGet, JobListAny,
+    JobView, PluginError, PluginInfo, Value,
 };
 
 library_plugin! {
@@ -32,6 +32,32 @@ fn surface() -> ApiSurface {
                 .param_json(opts_param())
                 .returns(json!({"type": "string", "description": "The job's id"})),
         )
+        .export(
+            ApiExport::function("get")
+                .describe("Read one of the caller's own jobs; nil if it is not theirs or absent")
+                .param("id", "string", "The job's id")
+                .returns(json!({"type": "object?", "description": "The job, or nil"})),
+        )
+        .export(
+            ApiExport::function("get_any")
+                .describe("Read any user's job; nil if absent")
+                .param("id", "string", "The job's id")
+                .returns(json!({"type": "object?", "description": "The job, or nil"})),
+        )
+        .export(
+            ApiExport::function("list_any")
+                .describe("List jobs across every user, newest first")
+                .param_json(list_opts_param())
+                .returns(json!({"type": "array", "description": "The matching jobs"})),
+        )
+}
+
+fn list_opts_param() -> Value {
+    json!({"name": "opts", "type": "object?", "description": "List filters", "properties": [
+        {"name": "status", "type": "array?", "description": "Statuses to include; default every status"},
+        {"name": "job_type", "type": "string?", "description": "Only jobs of this type"},
+        {"name": "limit", "type": "number?", "description": "Maximum jobs; the host defaults to 50 and caps at 200"}
+    ]})
 }
 
 fn opts_param() -> Value {
@@ -43,6 +69,9 @@ fn opts_param() -> Value {
 fn dispatch(function: &str, args: &[Value], _ctx: &CallContext) -> Result<Value, PluginError> {
     match function {
         "create" => create(args),
+        "get" => get(args, host::jobs_get),
+        "get_any" => get(args, host::jobs_get_any),
+        "list_any" => list_any(args),
         other => Err(PluginError::unknown_function(other)),
     }
 }
@@ -59,6 +88,37 @@ fn create(args: &[Value]) -> Result<Value, PluginError> {
         auth,
     })?;
     Ok(Value::String(id))
+}
+
+fn get(
+    args: &[Value],
+    read: fn(&JobGet) -> Result<Option<JobView>, PluginError>,
+) -> Result<Value, PluginError> {
+    let id = str_arg(args, 0, "id")?;
+    match read(&JobGet { id })? {
+        Some(view) => to_value(&view),
+        None => Ok(Value::Null),
+    }
+}
+
+fn list_any(args: &[Value]) -> Result<Value, PluginError> {
+    let jobs = host::jobs_list_any(&list_opts(args)?)?;
+    to_value(&jobs)
+}
+
+fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, PluginError> {
+    serde_json::to_value(value).map_err(|err| PluginError::host(err.to_string()))
+}
+
+/// `opts` is optional, but a non-table is rejected rather than read as "no
+/// filters", which would list every job.
+fn list_opts(args: &[Value]) -> Result<JobListAny, PluginError> {
+    match args.first() {
+        None | Some(Value::Null) => Ok(JobListAny::default()),
+        Some(value @ Value::Object(_)) => serde_json::from_value(value.clone())
+            .map_err(|err| PluginError::bad_input(format!("invalid opts: {err}"))),
+        _ => Err(PluginError::bad_input("opts must be a table")),
+    }
 }
 
 fn str_arg(args: &[Value], index: usize, name: &str) -> Result<String, PluginError> {
@@ -146,5 +206,26 @@ mod tests {
         let args = [json!("not an object")];
         let err = opts_arg(&args, 0).unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
+    }
+
+    #[test]
+    fn list_opts_reads_status_type_and_limit() {
+        let args =
+            vec![json!({"status": ["running"], "job_type": "instance.operation", "limit": 10})];
+        let spec = list_opts(&args).unwrap();
+        assert_eq!(spec.status, vec!["running".to_string()]);
+        assert_eq!(spec.job_type.as_deref(), Some("instance.operation"));
+        assert_eq!(spec.limit, Some(10));
+    }
+
+    #[test]
+    fn list_opts_allows_nil() {
+        assert_eq!(list_opts(&[]).unwrap(), JobListAny::default());
+        assert_eq!(list_opts(&[Value::Null]).unwrap(), JobListAny::default());
+    }
+
+    #[test]
+    fn list_opts_rejects_a_non_table() {
+        assert_eq!(list_opts(&[json!("x")]).unwrap_err().code, "BAD_INPUT");
     }
 }

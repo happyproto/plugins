@@ -5,8 +5,8 @@
   "api_version": "2",
   "plugin_type": "library",
   "namespace": "happyview.jobs",
-  "description": "Enqueue background jobs for the job worker.",
-  "capabilities": ["jobs:create"],
+  "description": "Enqueue and read background jobs for the job worker.",
+  "capabilities": ["jobs:create", "jobs:read", "jobs:read_any"],
   "allowed_hosts": [],
   "dependencies": [],
   "wasm_file": "happyview-jobs.wasm"
