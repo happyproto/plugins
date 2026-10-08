@@ -16,9 +16,9 @@ This is also the bootstrap for the plugin registry. The registry is itself a Hap
 plugins/
   happyview/
     atproto/   auth-itch/       auth-microsoft/  auth-steam/
-    auth-xbox/ backlinks/       db/              http/
-    jobs/      linked-repos/    lua/             record/
-    spaces/    sql/             xrpc/
+    auth-xbox/ backlinks/       blobs/           db/
+    http/      jobs/            linked-repos/    lua/
+    record/    spaces/          sql/             xrpc/
 ```
 
 A directory drops the platform prefix its crate and plugin id carry, because the platform directory already says it. Everything downstream — the host loader, the release tags, the installable artefacts — keys off `manifest.json` and the crate name, both of which keep the full `happyview-` prefix.
@@ -50,6 +50,7 @@ Library plugins expose functions to HappyView scripts (`require("<namespace>")` 
 | `happyview-db`   | `happyview.db`    | `records:read`                  | `records(collection)` builder, `get`, `search`, `backend` |
 | `happyview-sql`  | `happyview.sql`   | `database:read`, `database:write` | `from(table)` builder, `raw(sql, params?)`               |
 | `happyview-backlinks` | `happyview.backlinks` | `records:read`              | `to(uri)` builder                                          |
+| `happyview-blobs` | `happyview.blobs` | `blobs:read`, `blobs:write` | `put(bytes, mime_type)`, `get(cid)`, `stat(cid)`, `exists(cid)` |
 | `happyview-record` | `happyview.record` | `caller:write`, `records:read`, `records:write` | `create`, `put`, `delete`, `upload_blob`, `load`, `save_local`, `delete_local`, `validate` |
 | `happyview-xrpc` | `happyview.xrpc` | `caller:read`, `caller:call` | `query(method, params?)`, `procedure(method, input?, params?)` |
 | `happyview-atproto` | `happyview.atproto` | `atproto:read`, `attest:sign` | `resolve_service_endpoint`, `blob_download`, `get_labels`, `get_labels_batch`, `sign`, `verify_signature` |
@@ -165,6 +166,8 @@ An auth plugin uses `auth_plugin!` instead, which emits `plugin_info` plus the f
 | `records_get` | `host_records_get` | `records:read` |
 | `records_search` | `host_records_search` | `records:read` |
 | `backlinks_query` | `host_backlinks_query` | `records:read` |
+| `blob_put` | `host_blob_put` | `blobs:write` |
+| `blob_get` / `blob_stat` | `host_blob_get` / `host_blob_stat` | `blobs:read` |
 | `table_query` | `host_table_query` | `database:read` |
 | `db_query` | `host_db_query` | `database:read` or `database:write` |
 | `db_execute` | `host_db_execute` | `database:write` |

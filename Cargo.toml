@@ -17,6 +17,7 @@ default-members = [
     "plugins/happyview/auth-steam",
     "plugins/happyview/auth-xbox",
     "plugins/happyview/backlinks",
+    "plugins/happyview/blobs",
     "plugins/happyview/db",
     "plugins/happyview/http",
     "plugins/happyview/jobs",

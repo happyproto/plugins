@@ -1,0 +1,13 @@
+{
+  "id": "happyview-blobs",
+  "name": "Blobs",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "happyview.blobs",
+  "description": "Store and read byte content, addressed by the CID of its contents.",
+  "capabilities": ["blobs:read", "blobs:write"],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-blobs.wasm"
+}

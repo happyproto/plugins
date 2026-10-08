@@ -156,6 +156,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "happyview-blobs"
+version = "0.1.0"
+dependencies = [
+ "happyview-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "happyview-db"
 version = "0.1.0"
 dependencies = [
@@ -207,7 +216,7 @@ dependencies = [
 [[package]]
 name = "happyview-plugin-sdk"
 version = "0.1.0"
-source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#37fe99ec243027c70eae55098fa40d38230d61fb"
+source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#430c51972ead7e169920bdbc7249af6a1483e4ff"
 dependencies = [
  "serde",
  "serde_json",

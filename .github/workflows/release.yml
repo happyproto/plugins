@@ -124,6 +124,7 @@ jobs:
             db,
             sql,
             backlinks,
+            blobs,
             record,
             xrpc,
             atproto,
