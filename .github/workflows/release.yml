@@ -109,6 +109,10 @@ jobs:
       pull-requests: write
 
     strategy:
+      # One at a time: semantic-release pushes a tag and a git note per plugin,
+      # and parallel pushes collide, leaving a tag with no release behind.
+      max-parallel: 1
+      fail-fast: false
       matrix:
         plugin:
           [
