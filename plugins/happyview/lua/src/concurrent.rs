@@ -21,6 +21,12 @@ use crate::convert;
 use crate::require::plugin_error;
 
 const SHIM_KEY: &str = "happyview.async.shim";
+
+/// What the shim's frame is called in a traceback. Every library call passes
+/// through it, `internal.async` or not, so it is named for what it is to a
+/// script that never asked for concurrency. Lua prints it verbatim, with no
+/// `[string "..."]` around it.
+const CHUNK_NAME: &str = "[library bridge]";
 const ALL_KEY: &str = "happyview.async.all";
 
 /// The label a failure of the scheduler itself raises under, as opposed to a
@@ -164,7 +170,7 @@ pub fn install(lua: &Lua) -> LuaResult<()> {
     let wait = lua.create_function(wait)?;
     let (shim, all): (Function, Function) = lua
         .load(SCHEDULER)
-        .set_name("=internal.async")
+        .set_name(format!("={CHUNK_NAME}"))
         .call((resume, finish, wait))?;
     lua.set_named_registry_value(SHIM_KEY, shim)?;
     lua.set_named_registry_value(ALL_KEY, all)
@@ -546,6 +552,21 @@ mod tests {
         let value: String = eval(&lua, "return lib.echo('x')");
         assert_eq!(value, "x");
         assert_eq!(log_of(&log), ["call echo"]);
+    }
+
+    /// Every library call passes through the shim, so its frame is in every
+    /// library error's traceback; a script that never asked for
+    /// `internal.async` should not find that name there.
+    #[test]
+    fn a_library_error_names_the_bridge_rather_than_internal_async() {
+        let (lua, _) = vm();
+        let error = error_of(&lua, "lib.fail('x')");
+        assert!(
+            error.contains("test-lib.fail: Plugin returned error: BOOM - x"),
+            "{error}"
+        );
+        assert!(error.contains(&format!("{CHUNK_NAME}:")), "{error}");
+        assert!(!error.contains("internal.async"), "{error}");
     }
 
     /// Only the scheduler's own threads yield a call, and only where they can
