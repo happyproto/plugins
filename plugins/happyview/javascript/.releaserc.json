@@ -1,5 +1,6 @@
 {
-  "extends": "semantic-release-monorepo",
+  "extends": "../../../release/package-paths.mjs",
+  "packagePaths": ["plugins/happyview/javascript", "plugins/happyview/quickjs"],
   "branches": ["main"],
   "tagFormat": "happyview-javascript-v${version}",
   "plugins": [

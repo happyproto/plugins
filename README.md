@@ -34,6 +34,8 @@ Each plugin releases independently via semantic-release, configured in its own `
 
 A release tags `<plugin id>-v<version>`, stamps that version into `manifest.json`, and attaches the built `.wasm` beside the stamped manifest. Those two files are what an instance installs.
 
+A plugin's release counts the commits that touch its own directory, through `semantic-release-monorepo`. The exception is a plugin built on a crate beside it: the JavaScript interpreter's module is mostly the `quickjs/` engine, so its `.releaserc.json` extends `release/package-paths.mjs` instead and lists both directories, and a fix in the engine releases it. `node --test release/*.test.mjs` tests that filter.
+
 ## HappyView auth plugins
 
 Auth plugins link an external account to a HappyView user. They authorize, exchange and refresh tokens, and report who the token belongs to; they do not ingest data.
