@@ -101,8 +101,8 @@ fn not_validating(what: &str) -> PluginError {
     PluginError::host(format!("validation reaches no host, so not {what}"))
 }
 
-#[cfg(test)]
-pub(crate) mod fake {
+#[cfg(any(test, feature = "testing"))]
+pub mod fake {
     //! A host that answers from the test: surfaces it was given, calls
     //! settled by a responder in an order the test picks, and every log line
     //! and job control recorded.

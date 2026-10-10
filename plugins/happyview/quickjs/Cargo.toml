@@ -1,0 +1,38 @@
+[package]
+name = "happyview-quickjs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# The engine is linked into each QuickJS interpreter plugin and released with
+# them, never on its own.
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+# The fake host and the conformance corpus's harness, for the interpreter
+# plugins' own tests. Nothing a module is built from asks for it.
+testing = []
+
+[dependencies]
+happyview-plugin-sdk.workspace = true
+# QuickJS-ng through `rquickjs`, pinned exactly: the stubs in
+# `src/quickjs_stubs.c` displace libc symbols by name, and a QuickJS that
+# reached a new one would widen the module's imports without failing to build.
+# `loader` is the module resolver and loader `import` goes through, and
+# `allocator` is what lets the memory ceiling be this engine's own rather than
+# a sentence in an error. Nothing else is asked for, so neither
+# `quickjs-libc` nor an async executor is linked.
+rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "loader", "allocator"] }
+serde_json = "1"
+# The same formatter and parser the host's `internal.time` uses, so an ISO
+# 8601 string crosses unchanged. No `clock` feature: the clock is WASI's.
+chrono = { version = "0.4", default-features = false, features = ["alloc", "now"] }
+# `random_get`, which the clock id of a TID needs and `std` exposes no way to
+# reach.
+getrandom = "0.3"
+
+[build-dependencies]
+cc = "1"

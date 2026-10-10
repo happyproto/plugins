@@ -196,12 +196,8 @@ dependencies = [
 name = "happyview-javascript"
 version = "0.1.0"
 dependencies = [
- "cc",
- "chrono",
- "getrandom",
  "happyview-plugin-sdk",
- "rquickjs",
- "serde_json",
+ "happyview-quickjs",
  "wasmparser",
 ]
 
@@ -244,6 +240,18 @@ version = "0.1.0"
 source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#055b625633d1ab83a9dfb6a6a6a1062f8602baad"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "happyview-quickjs"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "chrono",
+ "getrandom",
+ "happyview-plugin-sdk",
+ "rquickjs",
  "serde_json",
 ]
 

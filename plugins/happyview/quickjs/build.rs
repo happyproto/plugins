@@ -19,6 +19,8 @@ fn main() {
     // Whole-archive, and emitted from a build script so cargo places it ahead
     // of both QuickJS and libc: the stubs displace libc's definitions only by
     // being linked before the archive members that would answer for them.
+    // The archive travels bundled inside this crate's rlib, and rustc links
+    // it whole into each plugin's module, so no plugin repeats this.
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR"));
     println!("cargo::rustc-link-search=native={}", out_dir.display());
     println!("cargo::rustc-link-lib=static:+whole-archive=hv_quickjs_stubs");
