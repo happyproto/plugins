@@ -56,6 +56,13 @@ export CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK/share/wasi-sysroot"
 export CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="-L $WASI_SDK/share/wasi-sysroot/lib/wasm32-wasip1"
 ```
 
+## Releases
+
+A change to this directory or to the engine's releases this plugin: a fix in
+the engine is a fix in every module built on it. `.releaserc.json` lists both
+paths for `release/package-paths.mjs`, which counts a commit only when it
+touches one of them.
+
 ## Tests
 
 `cargo test -p happyview-javascript` runs a 16-script conformance corpus,
