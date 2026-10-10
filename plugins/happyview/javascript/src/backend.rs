@@ -36,20 +36,12 @@ impl Backend for Host {
         host::library_surface(library)
     }
 
-    // TODO(concurrent-calls): `host::call_library_start` and
-    // `host::call_library_wait_any`, once the SDK on `alpha` carries them.
     fn start(&self, library: &str, function: &str, args: &[Json]) -> Result<u32, PluginError> {
-        let _ = (library, function, args);
-        Err(PluginError::host(
-            "concurrent library calls are not wired yet",
-        ))
+        host::call_library_start(library, function, args)
     }
 
     fn wait_any(&self, handles: &[u32]) -> Result<(u32, Result<Json, PluginError>), PluginError> {
-        let _ = handles;
-        Err(PluginError::host(
-            "concurrent library calls are not wired yet",
-        ))
+        host::call_library_wait_any(handles)
     }
 
     fn script_log(&self, request: &ScriptLogRequest) -> Result<(), PluginError> {
