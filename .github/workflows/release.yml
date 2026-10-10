@@ -13,13 +13,13 @@ jobs:
   fmt:
     runs-on: depot-ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cargo fmt --check
 
   clippy:
     runs-on: depot-ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup target add wasm32-unknown-unknown
       - run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
@@ -29,8 +29,8 @@ jobs:
   release-config:
     runs-on: depot-ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: node --test release/*.test.mjs
@@ -39,7 +39,7 @@ jobs:
     runs-on: depot-ubuntu-24.04
     needs: [fmt, clippy]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
@@ -80,11 +80,11 @@ jobs:
             module_env: HAPPYVIEW_TYPESCRIPT_WASM
     name: interpreter (${{ matrix.crate }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache wasi-sdk
         id: wasi-sdk
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/wasi-sdk
           key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
@@ -175,12 +175,12 @@ jobs:
           ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -198,7 +198,7 @@ jobs:
 
       - name: Restore wasi-sdk
         if: contains(fromJSON('["lua", "javascript", "typescript"]'), matrix.plugin)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/wasi-sdk
           key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
