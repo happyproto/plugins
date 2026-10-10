@@ -928,3 +928,55 @@ fn a_front_end_refusal_is_the_scripts_failure_in_both_exports() {
         }
     );
 }
+
+/// A front end that moves every line down two, as a compiler that emits a
+/// prelude does, and says so in its map.
+struct Shifting;
+
+impl Frontend for Shifting {
+    fn prepare(&self, source: &str) -> Result<Prepared, Vec<ValidateError>> {
+        let lines = source.lines().count() as u32;
+        let mappings = (1..=lines)
+            .map(|line| Mapping {
+                generated: Position {
+                    line: line + 2,
+                    column: 1,
+                },
+                original: Position { line, column: 1 },
+            })
+            .collect();
+        Ok(Prepared {
+            code: format!("\n\n{source}"),
+            map: Some(SourceMap::new(mappings)),
+        })
+    }
+}
+
+#[test]
+fn every_position_an_error_reports_is_the_authors() {
+    let (kind, _, line, raw) = failure_of(
+        execute(
+            &Shifting,
+            &execute_input(
+                "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
+            ),
+        )
+        .unwrap(),
+    );
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert_eq!(line, Some(3), "{raw}");
+    assert!(raw.contains("at handle (script:3:1)"), "{raw}");
+
+    let (kind, _, line, raw) =
+        failure_of(execute(&Shifting, &execute_input("const a = 1;\nconst = 2;\n")).unwrap());
+    assert_eq!(kind, ScriptErrorKind::Syntax);
+    assert_eq!(line, Some(2), "{raw}");
+    assert!(raw.contains("script:2:"), "{raw}");
+
+    let validated = validate(
+        &Shifting,
+        &validate_input("const x = undefined;\nx.y;\nexport default () => 1;"),
+    )
+    .unwrap();
+    assert_eq!(validated.errors[0].line, Some(2), "{:?}", validated.errors);
+}
