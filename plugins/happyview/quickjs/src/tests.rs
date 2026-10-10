@@ -7,6 +7,14 @@ use crate::backend::fake::{Fake, Order};
 use happyview_plugin_sdk::{ApiExport, ApiMethod, ApiSurface};
 use serde_json::json;
 
+fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
+    execute(&JavaScript, input)
+}
+
+fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError> {
+    validate(&JavaScript, input)
+}
+
 fn input(source: &str, extra: serde_json::Value) -> ExecuteInput {
     let mut base = json!({
         "source": source,
@@ -123,7 +131,7 @@ fn run_with(fake: Fake, source: &str, extra: serde_json::Value) -> (ExecuteOutpu
             fields[key] = value;
         }
     }
-    let output = execute_with(&input(source, fields), fake.clone())
+    let output = execute_with(&JavaScript, &input(source, fields), fake.clone())
         .expect("an output, not an envelope error");
     (output, fake)
 }
@@ -640,7 +648,7 @@ fn a_host_that_refuses_a_wait_is_the_interpreter_failing() {
         "import db from 'happyview.db';\nexport default () => db.get('x');",
         libraries(),
     );
-    let error = execute_with(&input, Rc::new(Refusing(fake()))).unwrap_err();
+    let error = execute_with(&JavaScript, &input, Rc::new(Refusing(fake()))).unwrap_err();
     assert_eq!(error.code, "BAD_INPUT");
 }
 
@@ -874,5 +882,49 @@ fn removed_globals_are_not_read() {
     assert_eq!(
         returned(execute_script(&input).unwrap()).0,
         json!("undefined")
+    );
+}
+
+// --- the front end --------------------------------------------------------
+
+/// A front end that refuses everything, as a language's compiler refuses a
+/// script it cannot turn into JavaScript.
+struct Refusing;
+
+impl Frontend for Refusing {
+    fn prepare(&self, _: &str) -> Result<Prepared, Vec<ValidateError>> {
+        Err(vec![
+            ValidateError {
+                kind: ScriptErrorKind::Syntax,
+                line: Some(3),
+                message: "first".to_string(),
+            },
+            ValidateError {
+                kind: ScriptErrorKind::Syntax,
+                line: None,
+                message: "second".to_string(),
+            },
+        ])
+    }
+}
+
+/// What a front end refuses never reaches QuickJS: validation answers every
+/// refusal, and a run fails as the first one, with all of them in its log.
+#[test]
+fn a_front_end_refusal_is_the_scripts_failure_in_both_exports() {
+    let validated = validate(&Refusing, &validate_input("anything")).unwrap();
+    assert!(!validated.valid);
+    assert_eq!(validated.errors.len(), 2);
+    assert_eq!(validated.errors[0].line, Some(3));
+
+    let output = execute(&Refusing, &execute_input("anything")).unwrap();
+    assert_eq!(
+        output,
+        ExecuteOutput::Error {
+            kind: ScriptErrorKind::Syntax,
+            message: "first".to_string(),
+            line: Some(3),
+            raw: "line 3: first\nsecond".to_string(),
+        }
     );
 }

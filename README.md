@@ -18,9 +18,13 @@ plugins/
     atproto/   auth-itch/       auth-microsoft/  auth-steam/
     auth-xbox/ backlinks/       blobs/           db/
     http/      javascript/      jobs/            linked-repos/
-    lua/       record/          spaces/          sql/
-    xrpc/
+    lua/       quickjs/         record/          spaces/
+    sql/       xrpc/
 ```
+
+`quickjs/` is the one directory that is not a plugin: it is the engine the
+QuickJS interpreters are built on, a library crate with no manifest and no
+release of its own.
 
 A directory drops the platform prefix its crate and plugin id carry, because the platform directory already says it. Everything downstream — the host loader, the release tags, the installable artefacts — keys off `manifest.json` and the crate name, both of which keep the full `happyview-` prefix.
 
@@ -75,11 +79,13 @@ any.
 | `happyview-javascript` | `javascript` (QuickJS-ng) | `library:call`, `script:host`, `wasi:clock`, `wasi:random`, `wasi:stdio` | `wasm32-wasip1` |
 
 They are the only members of this workspace that are not pure Rust on
-`wasm32-unknown-unknown`: each vendors an engine written in C — PUC Lua and
-QuickJS-ng — which is compiled with clang from wasi-sdk 34.0, so they are kept
-out of the workspace's default member set and have a CI job of their own. Each
-one's README has the contract it gives a script and the environment it needs
-to build.
+`wasm32-unknown-unknown`: each vendors an engine written in C — PUC Lua, and
+QuickJS-ng through the shared `happyview-quickjs` engine crate — which is
+compiled with clang from wasi-sdk 34.0, so they are kept out of the
+workspace's default member set, with the engine, and have a CI job of their
+own. Each one's README has the environment it needs to build and says where
+the contract it gives a script is written down: Lua's in its own, JavaScript's
+in the engine's.
 
 ## Writing a plugin with the SDK
 
@@ -202,7 +208,7 @@ cargo build --release --target wasm32-unknown-unknown
 # Plugins will be in target/wasm32-unknown-unknown/release/*.wasm
 ```
 
-`happyview-lua` and `happyview-javascript` are excluded from that build and need wasi-sdk; each one's own README has the environment.
+`happyview-lua`, `happyview-javascript` and the `happyview-quickjs` engine are excluded from that build and need wasi-sdk; each interpreter's own README has the environment.
 
 ## Configuration
 

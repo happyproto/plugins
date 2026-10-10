@@ -22,9 +22,10 @@
  * Defining those entry points here keeps libc's own out. An archive member is
  * extracted only to satisfy a symbol still undefined when the linker reaches
  * it, so a definition that arrives first displaces the member along with
- * everything its translation unit would have dragged in. `build.rs` links
- * this object whole and ahead of both QuickJS and libc, which is what "first"
- * rests on. `tests/module_interface.rs` pins the result, so a QuickJS or a
+ * everything its translation unit would have dragged in. This crate's
+ * `build.rs` links this object whole, into every plugin built on the engine,
+ * and ahead of both QuickJS and libc, which is what "first" rests on. Each
+ * plugin's `tests/module_interface.rs` pins the result, so a QuickJS or a
  * Rust that reaches a new libc symbol fails there, naming the import. */
 
 #include <errno.h>
