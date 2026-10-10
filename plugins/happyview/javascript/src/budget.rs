@@ -1,5 +1,5 @@
-//! The limits the interpreter owns: an instruction budget and a memory
-//! ceiling. Wall-clock time is the host's, as an epoch deadline
+//! The limits the interpreter owns: an instruction budget, a memory ceiling
+//! and a stack ceiling. Wall-clock time is the host's, as an epoch deadline
 //! armed before this module is ever entered, so there is no clock here.
 
 use std::cell::Cell;
@@ -25,13 +25,26 @@ pub const OUT_OF_MEMORY: &str = "out of memory";
 /// number can mean across two engines.
 const POLL_INTERVAL: u64 = 10_000;
 
-// There is no stack ceiling here. QuickJS-ng measures its stack on every
-// target but WASI, where it compiles the check out, so `set_max_stack_size`
-// would do nothing in the module. Runaway recursion instead ends when the
-// guest's own stack does: the module's stack sits below its data, so
-// overrunning it is an out-of-bounds access, a trap the host reads as the
-// run failing. The run ends either way; it is not an error a script can
-// catch.
+/// QuickJS's own stack ceiling, so deep recursion is a `RangeError` the script
+/// can catch rather than a trap.
+///
+/// What QuickJS measures is the shadow stack in linear memory, the 1 MiB
+/// rustc gives a wasm module; the rest of that is what the Rust frames around
+/// the engine and a host call's encoding need. But the stack that actually
+/// runs out is the host's native one, which QuickJS cannot see and which
+/// every level of recursion costs far more of — over twenty times as much in
+/// QuickJS-ng's parser. So this is sized against the host's native stack
+/// (`MAX_WASM_STACK`, 16 MiB in HappyView) as much as against its own: at 384
+/// KiB every shape measured on the real host, nested source and JSON
+/// included, ends in this error first, and ordinary recursion a thousand deep
+/// still runs. A host still on wasmtime's 512 KiB default runs out before
+/// this ceiling is reached, so there runaway recursion traps as it did
+/// without one.
+///
+/// Upstream QuickJS-ng compiles this check out under WASI; the workspace
+/// patches `rquickjs-sys` to a fork that keeps it (see the root
+/// `Cargo.toml`).
+const STACK_BYTES: usize = 384 * 1024;
 
 /// What this run has spent, shared with the interrupt handler and the
 /// allocator, and read once the run ends to tell a spent budget or a refused
@@ -187,4 +200,5 @@ pub fn install(runtime: &Runtime, budget: &Budget, limits: &ExecuteLimits) {
         let limit = usize::try_from(limits.memory_bytes).unwrap_or(usize::MAX);
         budget.memory.limit.set(limit);
     }
+    runtime.set_max_stack_size(STACK_BYTES);
 }

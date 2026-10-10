@@ -42,6 +42,15 @@ serde_json = { version = "1", default-features = false, features = ["alloc"] }
 # lives on until it is.
 happyview-plugin-sdk = { git = "https://github.com/gamesgamesgamesgamesgames/happyview", branch = "alpha" }
 
+# QuickJS-ng compiles its stack check out under WASI, so a script's runaway
+# recursion traps the JavaScript interpreter instead of throwing a
+# `RangeError`. The fork keeps the check, letting `JS_SetMaxStackSize` set a
+# limit on WASI, and is otherwise rquickjs 0.14.0 exactly; it is pinned by
+# revision so a push to the fork cannot change what builds here. Only
+# `happyview-javascript` depends on it.
+[patch.crates-io]
+rquickjs-sys = { git = "https://github.com/happyproto/rquickjs", rev = "8596e8ab03a8528c8cfa1b5e0627514d732cc887" }
+
 [profile.release]
 opt-level = "s"
 lto = true
