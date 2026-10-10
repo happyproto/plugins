@@ -216,7 +216,7 @@ dependencies = [
 [[package]]
 name = "happyview-plugin-sdk"
 version = "0.1.0"
-source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#29cd1867f093ce329361238ccaf37f98b80fff37"
+source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#055b625633d1ab83a9dfb6a6a6a1062f8602baad"
 dependencies = [
  "serde",
  "serde_json",
