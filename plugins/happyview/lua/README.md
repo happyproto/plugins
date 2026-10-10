@@ -67,7 +67,7 @@ functions act on the job row while the script is still running:
 The host holds the job for the whole run, so none of the three takes an id and
 a script cannot name another job.
 
-## The four built-in modules
+## The five built-in modules
 
 Under `internal.`, which a published plugin can never shadow.
 
@@ -100,8 +100,36 @@ end
   local one. `debug` reaches the process log and no table. A line that cannot
   be written never fails the run; a `fields` table that cannot be encoded
   does.
+- **`internal.async`** — `all(f1, f2, ...)`, below.
 
-Any other `internal.` name raises, naming the four.
+Any other `internal.` name raises, naming the five.
+
+### Library calls that run together
+
+A library call blocks, as it always has, unless it is made inside a function
+handed to `async.all`. There it is started rather than waited on, so the
+functions' calls are in flight at once:
+
+```lua
+local async = require("internal.async")
+local db = require("happyview.db")
+local http = require("happyview.http")
+
+function handle(input, ctx)
+  local posts, profile = async.all(
+    function() return db.records("app.example.post"):limit(10):run() end,
+    function() return http.get("https://example.com/" .. input.did) end
+  )
+  return { posts = posts, profile = profile }
+end
+```
+
+`all` returns each function's first value, in argument order, whatever order
+the calls finish in. A library error raises inside its function where the
+call was made, so `pcall` there catches it; one that is not caught is raised
+by `all` once every function has finished, the lowest-positioned first. A
+nested `all` runs to its end before its enclosing function goes on, and a
+coroutine of the script's own blocks on its calls, even inside `all`.
 
 ## `require`, and installed libraries
 
@@ -259,8 +287,9 @@ opening a Lua library does not unlink it.
 
 `cargo test -p happyview-lua` runs everything that does not need a host: the
 sandbox, the `os` subset against Lua 5.4's recorded output, the JSON rules,
-the bridge's chained documents, `ctx`, the budgets, the error contract, the
-84-file conformance corpus and the 257 Lua 5.4 probes. It also reads the built
+the bridge's chained documents, the `internal.async` scheduler against a host
+that settles calls in an order it chooses, `ctx`, the budgets, the error
+contract, the 84-file conformance corpus and the 257 Lua 5.4 probes. It also reads the built
 module's import and export sets, when one has been built.
 
 What needs a host lives in HappyView: `tests/lua_interpreter_plugin.rs` loads
