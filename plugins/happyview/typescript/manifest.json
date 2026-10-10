@@ -1,0 +1,22 @@
+{
+  "id": "happyview-typescript",
+  "name": "TypeScript",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "interpreter",
+  "description": "TypeScript (SWC and QuickJS-ng) for HappyView scripts.",
+  "language_id": "typescript",
+  "file_extension": "ts",
+  "monaco_language": "typescript",
+  "supports_libraries": ["*"],
+  "capabilities": [
+    "library:call",
+    "script:host",
+    "wasi:clock",
+    "wasi:random",
+    "wasi:stdio"
+  ],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-typescript.wasm"
+}

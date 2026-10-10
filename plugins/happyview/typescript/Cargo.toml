@@ -1,0 +1,36 @@
+[package]
+name = "happyview-typescript"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+happyview-plugin-sdk.workspace = true
+happyview-quickjs = { path = "../quickjs" }
+# The TypeScript compiler front end: SWC's TypeScript transform, pinned
+# exactly because the module's import set and size rest on what it links.
+# `swc_ts_fast_strip` is the maintained successor of `swc_fast_ts_strip`,
+# whose last release no longer builds beside this workspace's `serde`.
+swc_ts_fast_strip = "=59.0.0"
+# The same versions `swc_ts_fast_strip` builds on, named directly for what
+# its one entry point does not expose: a source map that reads no files, the
+# diagnostics a transform raises, the transform's own options, and the parsed
+# program, which is where the constructs QuickJS cannot run are found and
+# refused.
+swc_common = "26"
+# The string type a `FileLoader` answers in.
+bytes-str = "0.2"
+swc_ecma_ast = "29"
+swc_ecma_parser = { version = "46", default-features = false, features = ["typescript"] }
+swc_ecma_transforms_typescript = "56"
+swc_ecma_visit = "29"
+swc_sourcemap = "10"
+
+[dev-dependencies]
+happyview-quickjs = { path = "../quickjs", features = ["testing"] }
+serde_json = "1"
+wasmparser = "0.236"
