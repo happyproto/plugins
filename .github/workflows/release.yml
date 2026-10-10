@@ -48,14 +48,14 @@ jobs:
         run: cargo build --release --target wasm32-unknown-unknown
 
 
-  # The interpreters are the two members that are not pure Rust on
+  # The interpreters are the members that are not pure Rust on
   # `wasm32-unknown-unknown`: they vendor PUC Lua and QuickJS-ng, which
   # `lua-src` and `rquickjs-sys` compile with clang from wasi-sdk. They get a
   # job of their own rather than widening the two above, because a 600 MB
   # toolchain download is a cost the other fifteen plugins do not need and
   # because a failure here should name the interpreter rather than look like
   # the workspace is broken. One matrix entry each, so a failure also names
-  # which of the two.
+  # which one.
   #
   # `checked` is every crate an entry lints and tests. The QuickJS engine is
   # not a plugin and has no module to build, so it rides with the JavaScript
@@ -74,6 +74,10 @@ jobs:
             checked: -p happyview-javascript -p happyview-quickjs
             module: happyview_javascript
             module_env: HAPPYVIEW_JAVASCRIPT_WASM
+          - crate: happyview-typescript
+            checked: -p happyview-typescript
+            module: happyview_typescript
+            module_env: HAPPYVIEW_TYPESCRIPT_WASM
     name: interpreter (${{ matrix.crate }})
     steps:
       - uses: actions/checkout@v4
@@ -107,7 +111,8 @@ jobs:
 
       # Native, where the crate's logic is testable: the conformance corpora,
       # the 257 Lua 5.4 probes, the JavaScript event loop against a fake host,
-      # and the module's own import and export sets.
+      # TypeScript's transforms and error positions, and the module's own
+      # import and export sets.
       #
       # `TZ` because `os.time` reads a table as local time, as PUC does, and
       # the recorded Lua 5.4 reference was taken under UTC; JavaScript's `Date`
@@ -166,6 +171,7 @@ jobs:
             spaces,
             lua,
             javascript,
+            typescript,
           ]
 
     steps:
@@ -184,14 +190,14 @@ jobs:
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
 
-      # Only the two interpreters need either of these, and their
+      # Only the interpreters need either of these, and their
       # `.releaserc.json` files are the ones that build for `wasm32-wasip1`.
       - name: Add WASI target
-        if: matrix.plugin == 'lua' || matrix.plugin == 'javascript'
+        if: contains(fromJSON('["lua", "javascript", "typescript"]'), matrix.plugin)
         run: rustup target add wasm32-wasip1
 
       - name: Restore wasi-sdk
-        if: matrix.plugin == 'lua' || matrix.plugin == 'javascript'
+        if: contains(fromJSON('["lua", "javascript", "typescript"]'), matrix.plugin)
         uses: actions/cache@v4
         with:
           path: /opt/wasi-sdk
