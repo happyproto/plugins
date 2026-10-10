@@ -13,6 +13,7 @@ one is runnable.
 | plugin | front end |
 | --- | --- |
 | [`happyview-javascript`](../javascript/README.md) | none: the script is the module |
+| [`happyview-typescript`](../typescript/README.md) | SWC's TypeScript transform, with a source map back to the script |
 
 Everything below is therefore what a script sees in every QuickJS language.
 Nothing here is privileged: everything a script can reach arrives through
@@ -260,6 +261,15 @@ message and the whole stack for the event log.
 A compile failure is `syntax` only when it is a `SyntaxError`; an import that
 nothing serves is found while compiling, and is `runtime`, as a `require`
 failure is in Lua.
+
+A front end that refuses a script — a construct its language has and the
+engine cannot run — refuses it before QuickJS sees it: `validate` answers
+every refusal, each on its line, and a run fails as the first, with all of
+them in `raw`. A front end that rewrites the script hands back a source map,
+and every position the engine reports passes through it on the way out —
+`line`, each `script:L:C` frame in `raw`, compile errors and validate errors
+alike — so a failure is always placed in the source the author wrote. A
+position the map does not cover keeps the one QuickJS reported.
 
 `validate` compiles the module and evaluates file scope with every import a
 stub — a value whose every property is a function returning another stub — so

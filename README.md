@@ -19,11 +19,11 @@ plugins/
     auth-xbox/ backlinks/       blobs/           db/
     http/      javascript/      jobs/            linked-repos/
     lua/       quickjs/         record/          spaces/
-    sql/       xrpc/
+    sql/       typescript/      xrpc/
 ```
 
 `quickjs/` is the one directory that is not a plugin: it is the engine the
-QuickJS interpreters are built on, a library crate with no manifest and no
+JavaScript and TypeScript interpreters are built on, a library crate with no manifest and no
 release of its own.
 
 A directory drops the platform prefix its crate and plugin id carry, because the platform directory already says it. Everything downstream — the host loader, the release tags, the installable artefacts — keys off `manifest.json` and the crate name, both of which keep the full `happyview-` prefix.
@@ -34,7 +34,7 @@ Each plugin releases independently via semantic-release, configured in its own `
 
 A release tags `<plugin id>-v<version>`, stamps that version into `manifest.json`, and attaches the built `.wasm` beside the stamped manifest. Those two files are what an instance installs.
 
-A plugin's release counts the commits that touch its own directory, through `semantic-release-monorepo`. The exception is a plugin built on a crate beside it: the JavaScript interpreter's module is mostly the `quickjs/` engine, so its `.releaserc.json` extends `release/package-paths.mjs` instead and lists both directories, and a fix in the engine releases it. `node --test release/*.test.mjs` tests that filter.
+A plugin's release counts the commits that touch its own directory, through `semantic-release-monorepo`. The exception is a plugin built on a crate beside it: the JavaScript and TypeScript interpreters' modules are mostly the `quickjs/` engine, so each one's `.releaserc.json` extends `release/package-paths.mjs` instead and lists its own directory and the engine's, and a fix in the engine releases both. `node --test release/*.test.mjs` tests that filter.
 
 ## HappyView auth plugins
 
@@ -49,7 +49,7 @@ Auth plugins link an external account to a HappyView user. They authorize, excha
 
 ## HappyView library plugins
 
-Library plugins expose functions to HappyView scripts (`require("<namespace>")` in Lua, `import` from `"<namespace>"` in JavaScript). They declare the capabilities they need in `manifest.json`; the HappyView loader refuses a plugin whose WASM imports need more than it declares.
+Library plugins expose functions to HappyView scripts (`require("<namespace>")` in Lua, `import` from `"<namespace>"` in JavaScript and TypeScript). They declare the capabilities they need in `manifest.json`; the HappyView loader refuses a plugin whose WASM imports need more than it declares.
 
 | Plugin           | Namespace         | Capabilities                    | Provides                                                   |
 | ---------------- | ----------------- | -------------------------------- | ---------------------------------------------------------- |
@@ -79,15 +79,16 @@ any.
 | --- | --- | --- | --- |
 | `happyview-lua` | `lua` (PUC Lua 5.4.8) | `library:call`, `script:host`, `wasi:clock`, `wasi:random`, `wasi:stdio` | `wasm32-wasip1` |
 | `happyview-javascript` | `javascript` (QuickJS-ng) | `library:call`, `script:host`, `wasi:clock`, `wasi:random`, `wasi:stdio` | `wasm32-wasip1` |
+| `happyview-typescript` | `typescript` (SWC, then QuickJS-ng) | `library:call`, `script:host`, `wasi:clock`, `wasi:random`, `wasi:stdio` | `wasm32-wasip1` |
 
 They are the only members of this workspace that are not pure Rust on
 `wasm32-unknown-unknown`: each vendors an engine written in C — PUC Lua, and
-QuickJS-ng through the shared `happyview-quickjs` engine crate — which is
-compiled with clang from wasi-sdk 34.0, so they are kept out of the
-workspace's default member set, with the engine, and have a CI job of their
-own. Each one's README has the environment it needs to build and says where
-the contract it gives a script is written down: Lua's in its own, JavaScript's
-in the engine's.
+QuickJS-ng through the `happyview-quickjs` engine crate the JavaScript and
+TypeScript plugins share — which is compiled with clang from wasi-sdk 34.0,
+so they are kept out of the workspace's default member set, with the engine,
+and have a CI job of their own. Each one's README has the environment it
+needs to build and says where the contract it gives a script is written
+down: Lua's in its own, JavaScript's and TypeScript's in the engine's.
 
 ## Writing a plugin with the SDK
 
@@ -210,7 +211,7 @@ cargo build --release --target wasm32-unknown-unknown
 # Plugins will be in target/wasm32-unknown-unknown/release/*.wasm
 ```
 
-`happyview-lua`, `happyview-javascript` and the `happyview-quickjs` engine are excluded from that build and need wasi-sdk; each interpreter's own README has the environment.
+`happyview-lua`, `happyview-javascript`, `happyview-typescript` and the `happyview-quickjs` engine are excluded from that build and need wasi-sdk; each interpreter's own README has the environment.
 
 ## Configuration
 
