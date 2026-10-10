@@ -26,12 +26,22 @@ library_plugin! {
 fn surface() -> ApiSurface {
     ApiSurface::new("happyview.atproto")
         .describe(
-            "AT Protocol service resolution, blob download, label lookup, and attestation signing",
+            "AT Protocol identity and service resolution, blob download, label lookup, and \
+             attestation signing",
         )
         .export(
             ApiExport::function("resolve_service_endpoint")
                 .describe("Resolve the AT Protocol service a DID's document advertises")
                 .param("did", "string", "Subject DID"),
+        )
+        .export(
+            ApiExport::function("resolve_identity")
+                .describe(
+                    "Resolve a handle or DID to both. `handle` is null unless it was confirmed \
+                     in both directions, so an unverified one is never returned for display",
+                )
+                .param("identifier", "string", "A handle or a DID")
+                .returns(identity_shape()),
         )
         .export(
             ApiExport::function("blob_download")
@@ -68,6 +78,13 @@ fn surface() -> ApiSurface {
         )
 }
 
+fn identity_shape() -> Value {
+    json!({
+        "did": "string",
+        "handle": "string|null",
+    })
+}
+
 fn blob_shape() -> Value {
     json!({"type": "object", "properties": [
         {"name": "bytes", "type": "string", "description": "UTF-8 text, or an array of byte values when not UTF-8"},
@@ -79,6 +96,7 @@ fn blob_shape() -> Value {
 fn dispatch(function: &str, args: &[Value], _ctx: &CallContext) -> Result<Value, PluginError> {
     match function {
         "resolve_service_endpoint" => resolve_service_endpoint(args),
+        "resolve_identity" => resolve_identity(args),
         "blob_download" => blob_download(args),
         "get_labels" => get_labels(args),
         "get_labels_batch" => get_labels_batch(args),
@@ -93,6 +111,15 @@ fn resolve_service_endpoint(args: &[Value]) -> Result<Value, PluginError> {
     Ok(host::atproto_resolve_service(&did)?
         .map(Value::from)
         .unwrap_or(Value::Null))
+}
+
+fn resolve_identity(args: &[Value]) -> Result<Value, PluginError> {
+    let identifier = str_arg(args, 0, "identifier")?;
+    let identity = host::atproto_resolve_identity(&identifier)?;
+    // `handle` is serialised away when absent, and a script reading a missing
+    // key gets nil either way; spelling it null keeps the shape the surface
+    // describes.
+    Ok(json!({ "did": identity.did, "handle": identity.handle }))
 }
 
 fn blob_download(args: &[Value]) -> Result<Value, PluginError> {
