@@ -1,0 +1,19 @@
+{
+  "extends": "../../../release/package-paths.mjs",
+  "packagePaths": ["plugins/happyview/typescript", "plugins/happyview/quickjs"],
+  "branches": ["main"],
+  "tagFormat": "happyview-typescript-v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/exec", {
+      "prepareCmd": "cargo build --release --target wasm32-wasip1 -p happyview-typescript && jq '.version = \"${nextRelease.version}\"' manifest.json > manifest.tmp && mv manifest.tmp manifest.json"
+    }],
+    ["@semantic-release/github", {
+      "assets": [
+        {"path": "../../../target/wasm32-wasip1/release/happyview_typescript.wasm", "name": "happyview-typescript.wasm", "label": "TypeScript Interpreter Plugin WASM"},
+        {"path": "manifest.json", "name": "manifest.json", "label": "Plugin Manifest"}
+      ]
+    }]
+  ]
+}
