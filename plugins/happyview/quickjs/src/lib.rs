@@ -18,6 +18,7 @@ pub mod conformance;
 mod convert;
 mod ctx;
 mod imports;
+mod positions;
 mod sandbox;
 
 use std::cell::RefCell;
@@ -36,6 +37,7 @@ pub use backend::fake;
 pub use backend::Backend;
 use budget::Budget;
 use calls::{Calls, ClearOnDrop, Unsettled};
+pub use positions::{Mapping, Position, SourceMap};
 
 /// The step from what an author wrote to the JavaScript QuickJS compiles.
 /// It is the only thing a language plugin supplies: what runs afterwards,
@@ -51,6 +53,9 @@ pub trait Frontend {
 pub struct Prepared {
     /// The ES module QuickJS compiles.
     pub code: String,
+    /// Where `code` came from in the source, when the front end moved
+    /// anything. `None` says every position is already the author's.
+    pub map: Option<SourceMap>,
 }
 
 /// JavaScript itself, which is what the engine already runs: nothing to
@@ -61,6 +66,7 @@ impl Frontend for JavaScript {
     fn prepare(&self, source: &str) -> Result<Prepared, Vec<ValidateError>> {
         Ok(Prepared {
             code: source.to_string(),
+            map: None,
         })
     }
 }
@@ -128,22 +134,39 @@ fn run<'js>(
     calls: &Calls,
     budget: &Budget,
 ) -> Result<ExecuteOutput, PluginError> {
+    let map = prepared.map.as_ref();
     let module = match Module::declare(ctx.clone(), sandbox::MODULE_NAME, prepared.code.as_str()) {
         Ok(module) => module,
-        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Syntax, e, budget)),
+        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Syntax, e, budget, map)),
     };
     // File scope, top-level `await` included, settles through the same loop
     // a handler's promise does, before `handle` is ever called.
     let module = match module.eval() {
-        Ok((module, evaluated)) => match wait(ctx, calls, &evaluated, budget, "the module")? {
+        Ok((module, evaluated)) => match wait(ctx, calls, &evaluated, budget, map, "the module")? {
             Ok(_) => module,
             Err(failure) => return Ok(failure),
         },
-        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Runtime, e, budget)),
+        Err(e) => {
+            return Ok(script_failure(
+                ctx,
+                ScriptErrorKind::Runtime,
+                e,
+                budget,
+                map,
+            ))
+        }
     };
     let handle: Value = match module.get("default") {
         Ok(handle) => handle,
-        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Runtime, e, budget)),
+        Err(e) => {
+            return Ok(script_failure(
+                ctx,
+                ScriptErrorKind::Runtime,
+                e,
+                budget,
+                map,
+            ))
+        }
     };
     let Some(handle) = handle.into_function() else {
         return Ok(failure(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
@@ -155,10 +178,18 @@ fn run<'js>(
         .and_then(|argument| Ok((argument, ctx::build(ctx, &input.context, backend)?)));
     let returned = match arguments.and_then(|arguments| handle.call::<_, Value>(arguments)) {
         Ok(returned) => returned,
-        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Runtime, e, budget)),
+        Err(e) => {
+            return Ok(script_failure(
+                ctx,
+                ScriptErrorKind::Runtime,
+                e,
+                budget,
+                map,
+            ))
+        }
     };
     let returned = match returned.clone().into_promise() {
-        Some(promise) => match wait(ctx, calls, &promise, budget, "handle's promise")? {
+        Some(promise) => match wait(ctx, calls, &promise, budget, map, "handle's promise")? {
             Ok(value) => value,
             Err(failure) => return Ok(failure),
         },
@@ -175,7 +206,13 @@ fn run<'js>(
     let value_kind = value_kind(&returned);
     match convert::to_json(ctx, returned) {
         Ok(value) => Ok(ExecuteOutput::Returned { value, value_kind }),
-        Err(e) => Ok(script_failure(ctx, ScriptErrorKind::Runtime, e, budget)),
+        Err(e) => Ok(script_failure(
+            ctx,
+            ScriptErrorKind::Runtime,
+            e,
+            budget,
+            map,
+        )),
     }
 }
 
@@ -186,6 +223,7 @@ fn wait<'js>(
     calls: &Calls,
     promise: &Promise<'js>,
     budget: &Budget,
+    map: Option<&SourceMap>,
     what: &str,
 ) -> Result<Result<Value<'js>, ExecuteOutput>, PluginError> {
     match calls.run(ctx, promise, budget) {
@@ -195,6 +233,7 @@ fn wait<'js>(
             ScriptErrorKind::Runtime,
             e,
             budget,
+            map,
         ))),
         Err(Unsettled::Spent) => Ok(Err(failure(ScriptErrorKind::Timeout, budget::SPENT))),
         Err(Unsettled::Stuck) => Ok(Err(failure(ScriptErrorKind::Runtime, never_settled(what)))),
@@ -279,7 +318,7 @@ fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, Plugin
     context.with(|ctx| {
         let _clear = ClearOnDrop(&calls);
         let refused = |kind, e| -> Attempt {
-            let thrown = describe(&ctx, e);
+            let thrown = describe(&ctx, e, prepared.map.as_ref());
             if let Some((module, export)) = imports::missing_export(&thrown.text) {
                 return Attempt::Wants(module, export);
             }
@@ -376,8 +415,9 @@ fn script_failure(
     default: ScriptErrorKind,
     error: rquickjs::Error,
     budget: &Budget,
+    map: Option<&SourceMap>,
 ) -> ExecuteOutput {
-    let thrown = describe(ctx, error);
+    let thrown = describe(ctx, error, map);
     let default = compile_kind(default, &thrown);
     let (kind, message) = if budget.is_spent() {
         (ScriptErrorKind::Timeout, budget::SPENT.to_string())
@@ -441,15 +481,17 @@ impl Thrown {
     }
 }
 
-fn describe(ctx: &Ctx<'_>, error: rquickjs::Error) -> Thrown {
+/// What was thrown, with every position in it the author's: `map` is the
+/// front end's, and `None` when it moved nothing.
+fn describe(ctx: &Ctx<'_>, error: rquickjs::Error, map: Option<&SourceMap>) -> Thrown {
     match error {
-        rquickjs::Error::Exception => describe_value(ctx, ctx.catch()),
+        rquickjs::Error::Exception => describe_value(ctx, ctx.catch(), map),
         rquickjs::Error::Allocation => Thrown::plain(budget::OUT_OF_MEMORY.to_string(), true),
         other => Thrown::plain(other.to_string(), false),
     }
 }
 
-fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Thrown {
+fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap>) -> Thrown {
     let read = |name: &str| -> Option<String> {
         let object = value.as_object()?;
         match object.get::<_, Option<Coerced<String>>>(name) {
@@ -466,7 +508,7 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Thrown {
     if value.is_error() {
         let name = read("name").unwrap_or_else(|| "Error".to_string());
         let text = read("message").unwrap_or_default();
-        let stack = read("stack").unwrap_or_default();
+        let stack = positions::remap_frames(&read("stack").unwrap_or_default(), map);
         let message = if name == "Error" {
             text.clone()
         } else {
@@ -479,7 +521,7 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Thrown {
         }
         return Thrown {
             syntax: name == "SyntaxError",
-            line: line_of(&stack),
+            line: positions::line_of(&stack, None),
             memory: name == "InternalError" && text == budget::OUT_OF_MEMORY,
             text,
             message,
@@ -498,28 +540,6 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Thrown {
         }
     };
     Thrown::plain(text, memory)
-}
-
-/// The line of the innermost frame in the script's own module, from a stack
-/// QuickJS writes as `    at handle (script:12:5)` or `    at script:12:5`.
-/// A frame in a library's module or in a native function is skipped, so an
-/// error thrown by the bridge is placed at the line that called it.
-fn line_of(stack: &str) -> Option<u32> {
-    let marker = format!("{}:", sandbox::MODULE_NAME);
-    stack.lines().find_map(|frame| {
-        let frame = frame.trim();
-        let location = match frame.rfind(&format!("({marker}")) {
-            Some(at) => &frame[at + 1..],
-            None => frame
-                .strip_prefix("at ")
-                .filter(|rest| rest.starts_with(&marker))?,
-        };
-        location[marker.len()..]
-            .split(|c: char| !c.is_ascii_digit())
-            .next()?
-            .parse()
-            .ok()
-    })
 }
 
 fn invalid(kind: ScriptErrorKind, line: Option<u32>, message: impl Into<String>) -> ValidateOutput {
