@@ -1,0 +1,22 @@
+{
+  "id": "happyview-javascript",
+  "name": "JavaScript",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "interpreter",
+  "description": "JavaScript (QuickJS-ng) for HappyView scripts.",
+  "language_id": "javascript",
+  "file_extension": "js",
+  "monaco_language": "javascript",
+  "supports_libraries": ["*"],
+  "capabilities": [
+    "library:call",
+    "script:host",
+    "wasi:clock",
+    "wasi:random",
+    "wasi:stdio"
+  ],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-javascript.wasm"
+}

@@ -1,0 +1,33 @@
+[package]
+name = "happyview-javascript"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+happyview-plugin-sdk.workspace = true
+# QuickJS-ng through `rquickjs`, pinned exactly: the stubs in
+# `src/quickjs_stubs.c` displace libc symbols by name, and a QuickJS that
+# reached a new one would widen the module's imports without failing to build.
+# `loader` is the module resolver and loader `import` goes through, and
+# `allocator` is what lets the memory ceiling be this plugin's own rather than
+# a sentence in an error. Nothing else is asked for, so neither
+# `quickjs-libc` nor an async executor is linked.
+rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "loader", "allocator"] }
+serde_json = "1"
+# The same formatter and parser the host's `internal.time` uses, so an ISO
+# 8601 string crosses unchanged. No `clock` feature: the clock is WASI's.
+chrono = { version = "0.4", default-features = false, features = ["alloc", "now"] }
+# `random_get`, which the clock id of a TID needs and `std` exposes no way to
+# reach.
+getrandom = "0.3"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+wasmparser = "0.236"
