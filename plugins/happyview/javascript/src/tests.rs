@@ -359,7 +359,6 @@ fn an_instruction_budget_ends_a_run_through_every_layer_of_catching() {
          catch (e) { return { caught: String(e) }; } }",
         "export default () => new Promise(() => { while (true) {} }).catch(() => ({ ok: true }))",
         "export default async () => { for (;;) await null; }",
-        "export default () => { const f = () => f(); try { f(); } catch (e) {} while (true) {} }",
         "while (true) {}\nexport default () => 1;",
     ] {
         let output = run_bounded(with_limits(source, json!(10_000), 67_108_864));
@@ -424,18 +423,6 @@ fn a_memory_ceiling_is_a_memory_failure_rather_than_a_trap() {
     let (kind, message, ..) = failure_of(output);
     assert_eq!(kind, ScriptErrorKind::Memory);
     assert!(message.contains("out of memory"), "{message}");
-}
-
-#[test]
-fn deep_recursion_is_an_error_the_script_can_catch() {
-    let output = run_bounded(execute_input(
-        "export default () => { const f = (n) => f(n + 1) + 1; \
-         try { f(0); } catch (e) { return e.message; } }",
-    ));
-    assert_eq!(
-        returned(output).0,
-        json!("Maximum call stack size exceeded")
-    );
 }
 
 // --- the event loop -------------------------------------------------------

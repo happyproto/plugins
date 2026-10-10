@@ -209,21 +209,19 @@ already a `ReferenceError` naming it.
 `Date` reads and writes UTC. This plugin's own test suite therefore runs under
 `TZ=UTC`, where a native run matches the module.
 
-## The three budgets, and the two the host owns
+## The two budgets, and the two the host owns
 
 **Instructions — this plugin's.** QuickJS checks for an interrupt at every
 loop back-edge and call, and asks this plugin once every 10,000 checks;
-`limits.instructions` is counted in checks. Once spent it stays spent, and the interrupt is **uncatchable**: `catch`
-and `finally` are skipped, an `async` function's promise never settles, and a
-run that somehow reaches a normal return afterwards fails as a timeout anyway.
-A job run is exempt, which is what `should_stop` is for.
+`limits.instructions` is counted in checks. Once spent it stays spent, and the
+interrupt is **uncatchable**: `catch` and `finally` are skipped, an `async`
+function's promise never settles, and a run that somehow reaches a normal
+return afterwards fails as a timeout anyway. A job run is exempt, which is what
+`should_stop` is for.
 
 **Memory — this plugin's.** `limits.memory_bytes` is a ceiling on QuickJS's
 own allocations, counted by this plugin's allocator, so exhausting it fails
 the run as a memory error rather than a trap.
-
-**Stack — this plugin's.** 512 KiB of QuickJS stack, below the guest's own, so
-runaway recursion is a `RangeError` a script can catch.
 
 **Wall clock — the host's**, as an interruption no script can catch. It counts
 only time the guest is running, so a script waiting on a library call is not
@@ -232,6 +230,12 @@ charged for it.
 **Memory again — the host's**, a second ceiling above this one, so the clean
 error is the one a script meets and the trap is only ever reached by something
 this plugin's ceiling cannot see.
+
+**There is no stack budget.** QuickJS-ng measures its own stack on every
+target but WASI, where it compiles the check out. Runaway recursion therefore
+ends when the guest's stack does: a trap, which the host reports as the run
+failing, rather than a `RangeError` a script can catch. The Lua
+plugin does better here, because PUC Lua bounds its C recursion itself.
 
 ## Errors
 
