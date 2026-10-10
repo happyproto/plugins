@@ -12,6 +12,7 @@ use happyview_plugin_sdk::tid::{
 use happyview_plugin_sdk::ScriptLogRequest;
 use mlua::{Lua, LuaSerdeExt, Result as LuaResult, Table, Value};
 
+use crate::concurrent;
 use crate::convert;
 
 pub const PREFIX: &str = "internal.";
@@ -19,11 +20,12 @@ pub const PREFIX: &str = "internal.";
 /// Every built-in name, for lookup and for naming them in an unknown-module
 /// error. One list, so a new built-in cannot be added to the match below and
 /// forgotten here.
-pub const MODULES: [&str; 4] = [
+pub const MODULES: [&str; 5] = [
     "internal.logging",
     "internal.time",
     "internal.tids",
     "internal.json",
+    "internal.async",
 ];
 
 pub fn module(lua: &Lua, name: &str) -> LuaResult<Option<Table>> {
@@ -38,6 +40,7 @@ pub fn module(lua: &Lua, name: &str) -> LuaResult<Option<Table>> {
         "time" => time(lua)?,
         "tids" => tids(lua)?,
         "json" => json(lua)?,
+        "async" => concurrent::module(lua)?,
         _ => unreachable!("MODULES and this match must name the same suffixes"),
     }))
 }

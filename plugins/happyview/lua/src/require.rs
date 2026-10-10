@@ -9,6 +9,7 @@ use mlua::{Function, Lua, MultiValue, Result as LuaResult, Table, Value};
 use serde_json::{json, Map, Value as Json};
 
 use crate::builtins;
+use crate::concurrent;
 use crate::convert;
 
 const LOADED_KEY: &str = "happyview.require.loaded";
@@ -22,7 +23,7 @@ const LOADED_KEY: &str = "happyview.require.loaded";
 /// {code} - {message}`. Everything else — a depth limit, a library that is
 /// not installed, one that trapped — arrives under `LIBRARY_ERROR` carrying
 /// the host's own rendering, which the native path shows unprefixed.
-fn plugin_error(label: &str, error: PluginError) -> mlua::Error {
+pub fn plugin_error(label: &str, error: PluginError) -> mlua::Error {
     if error.code == HOST_RENDERED {
         return mlua::Error::runtime(format!("{label}: {}", error.message));
     }
@@ -56,6 +57,7 @@ fn missing_module(name: &str) -> mlua::Error {
 /// Install `require` for a run. Resolution is synchronous because every host
 /// import is, and a script calls `require` at file scope anyway.
 pub fn install(lua: &Lua, libraries: &[LibraryRef]) -> LuaResult<()> {
+    concurrent::install(lua)?;
     lua.set_named_registry_value(LOADED_KEY, lua.create_table()?)?;
     let libraries: Vec<(String, String)> = libraries
         .iter()
@@ -93,7 +95,7 @@ pub fn install(lua: &Lua, libraries: &[LibraryRef]) -> LuaResult<()> {
 
 /// One library's surface as a table. Keys are the surface's canonical names,
 /// which is what every document on the wire carries.
-fn build_module(lua: &Lua, library: &str, surface: &ApiSurface) -> LuaResult<Table> {
+pub fn build_module(lua: &Lua, library: &str, surface: &ApiSurface) -> LuaResult<Table> {
     let module = lua.create_table()?;
     for export in &surface.exports {
         if export.is_function() {
@@ -114,11 +116,21 @@ fn build_module(lua: &Lua, library: &str, surface: &ApiSurface) -> LuaResult<Tab
 }
 
 fn library_function(lua: &Lua, library: &str, name: &str) -> LuaResult<Function> {
-    let (library, name) = (library.to_string(), name.to_string());
-    lua.create_function(move |lua, args: MultiValue| {
-        let args = arguments(lua, args)?;
-        call(lua, &library, &name, &format!("{library}.{name}"), &args)
-    })
+    let entry = |scheduled: bool| {
+        let (library, name) = (library.to_string(), name.to_string());
+        lua.create_function(move |lua, args: MultiValue| {
+            let args = arguments(lua, args)?;
+            call(
+                lua,
+                scheduled,
+                &library,
+                &name,
+                &format!("{library}.{name}"),
+                &args,
+            )
+        })
+    };
+    concurrent::shim(lua, entry(false)?, entry(true)?)
 }
 
 /// A constructor hands out objects sharing one method table, since a method
@@ -179,21 +191,25 @@ fn immediate_method(
     constructor_name: &str,
     name: &str,
 ) -> LuaResult<Function> {
-    let (library, constructor_name, name) = (
-        library.to_string(),
-        constructor_name.to_string(),
-        name.to_string(),
-    );
-    lua.create_function(move |lua, (object, args): (Table, MultiValue)| {
-        let document = call_document(lua, &object, &name, args)?;
-        call(
-            lua,
-            &library,
-            &constructor_name,
-            &format!("{library}.{constructor_name}:{name}"),
-            &[document],
-        )
-    })
+    let entry = |scheduled: bool| {
+        let (library, constructor_name, name) = (
+            library.to_string(),
+            constructor_name.to_string(),
+            name.to_string(),
+        );
+        lua.create_function(move |lua, (object, args): (Table, MultiValue)| {
+            let document = call_document(lua, &object, &name, args)?;
+            call(
+                lua,
+                scheduled,
+                &library,
+                &constructor_name,
+                &format!("{library}.{constructor_name}:{name}"),
+                &[document],
+            )
+        })
+    };
+    concurrent::shim(lua, entry(false)?, entry(true)?)
 }
 
 /// The object and the call as one document: the constructor's own arguments,
@@ -224,10 +240,21 @@ fn arguments(lua: &Lua, args: MultiValue) -> LuaResult<Vec<Json>> {
         .collect()
 }
 
-fn call(lua: &Lua, library: &str, function: &str, label: &str, args: &[Json]) -> LuaResult<Value> {
-    match host::call_library(library, function, args) {
-        Ok(value) => convert::library_result(lua, &value),
-        Err(e) => Err(plugin_error(label, e)),
+/// Every library call a script makes. `scheduled` is the shim's to decide,
+/// since only Lua can tell whether the running thread may yield: a scheduled
+/// call answers a handle to yield, and any other blocks for its value.
+fn call(
+    lua: &Lua,
+    scheduled: bool,
+    library: &str,
+    function: &str,
+    label: &str,
+    args: &[Json],
+) -> LuaResult<Value> {
+    if scheduled {
+        concurrent::start(lua, library, function, label, args)
+    } else {
+        concurrent::call(lua, library, function, label, args)
     }
 }
 
@@ -282,6 +309,7 @@ mod tests {
 
     fn module_vm() -> Lua {
         let lua = sandbox();
+        concurrent::install(&lua).unwrap();
         let module = build_module(&lua, "happyview-db", &surface()).unwrap();
         lua.globals().set("db", module).unwrap();
         lua
@@ -384,14 +412,14 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_internal_module_names_the_four() {
+    fn an_unknown_internal_module_names_the_five() {
         let lua = sandbox();
         install(&lua, &[]).unwrap();
         let error = error_of(&lua, "return require('internal.nope')");
         assert!(
             error.contains(
                 "module 'internal.nope' not found -- built-in modules are: \
-                 internal.logging, internal.time, internal.tids, internal.json"
+                 internal.logging, internal.time, internal.tids, internal.json, internal.async"
             ),
             "{error}"
         );
