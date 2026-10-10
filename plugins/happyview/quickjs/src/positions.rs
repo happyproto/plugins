@@ -144,7 +144,10 @@ mod tests {
         Position { line, column }
     }
 
-    fn map(pairs: &[((u32, u32), (u32, u32))]) -> SourceMap {
+    /// `(generated, original)`, each as `(line, column)`.
+    type Pair = ((u32, u32), (u32, u32));
+
+    fn map(pairs: &[Pair]) -> SourceMap {
         SourceMap::new(
             pairs
                 .iter()
