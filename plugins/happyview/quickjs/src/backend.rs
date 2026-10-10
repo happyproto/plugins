@@ -144,6 +144,12 @@ pub mod fake {
         pub should_stop: Cell<bool>,
     }
 
+    impl Default for Fake {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl Fake {
         pub fn new() -> Self {
             Self {
