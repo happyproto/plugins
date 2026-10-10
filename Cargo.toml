@@ -6,10 +6,11 @@ resolver = "2"
 members = [
     "plugins/*/*",
 ]
-# `happyview-lua` vendors PUC Lua, which compiles only for a target its C
-# toolchain knows, so it is the one member that is not a pure-Rust
-# `wasm32-unknown-unknown` plugin. Keeping it out of the default set leaves a
-# bare workspace build building the members that share one target.
+# `happyview-lua` and `happyview-javascript` vendor PUC Lua and QuickJS-ng,
+# which compile only for a target their C toolchain knows, so they are the two
+# members that are not pure-Rust `wasm32-unknown-unknown` plugins. Keeping them
+# out of the default set leaves a bare workspace build building the members
+# that share one target.
 default-members = [
     "plugins/happyview/atproto",
     "plugins/happyview/auth-itch",

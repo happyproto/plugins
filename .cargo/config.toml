@@ -2,15 +2,22 @@
 # `libwasi-emulated-signal`, neither of which rustc's bundled wasi-libc ships.
 # Without `CC_wasm32_wasip1` the platform's own clang runs and reports "no
 # available targets are compatible with triple wasm32-wasip1", which names
-# neither the toolchain nor the fix. Only `happyview-lua` needs any of this.
+# neither the toolchain nor the fix. Only the two interpreters need any of
+# this.
+#
+# `WASI_SDK` is `rquickjs-sys`'s own: it compiles QuickJS-ng with the clang it
+# finds there, and without it downloads a wasi-sdk of its own choosing into
+# the build directory — a different toolchain from the one Lua is built with,
+# fetched on every clean build.
 #
 # The paths below assume wasi-sdk 34.0 unpacked at /opt/wasi-sdk. A value set
 # in the environment wins over `[env]`, and
 # `CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS` replaces the target flags, so an
 # install elsewhere needs no edit here. Reach for that variable rather than
 # `RUSTFLAGS`, which is not target-scoped: a `-L` into the wasi sysroot breaks
-# every host build in the same shell, including this crate's own tests.
+# every host build in the same shell, including the interpreters' own tests.
 [env]
+WASI_SDK = "/opt/wasi-sdk"
 CC_wasm32_wasip1 = "/opt/wasi-sdk/bin/wasm32-wasip1-clang"
 AR_wasm32_wasip1 = "/opt/wasi-sdk/bin/llvm-ar"
 CFLAGS_wasm32_wasip1 = "--sysroot=/opt/wasi-sdk/share/wasi-sysroot"

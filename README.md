@@ -17,8 +17,9 @@ plugins/
   happyview/
     atproto/   auth-itch/       auth-microsoft/  auth-steam/
     auth-xbox/ backlinks/       blobs/           db/
-    http/      jobs/            linked-repos/    lua/
-    record/    spaces/          sql/             xrpc/
+    http/      javascript/      jobs/            linked-repos/
+    lua/       record/          spaces/          sql/
+    xrpc/
 ```
 
 A directory drops the platform prefix its crate and plugin id carry, because the platform directory already says it. Everything downstream — the host loader, the release tags, the installable artefacts — keys off `manifest.json` and the crate name, both of which keep the full `happyview-` prefix.
@@ -42,7 +43,7 @@ Auth plugins link an external account to a HappyView user. They authorize, excha
 
 ## HappyView library plugins
 
-Library plugins expose functions to HappyView scripts (`require("<namespace>")` in Lua). They declare the capabilities they need in `manifest.json`; the HappyView loader refuses a plugin whose WASM imports need more than it declares.
+Library plugins expose functions to HappyView scripts (`require("<namespace>")` in Lua, `import` from `"<namespace>"` in JavaScript). They declare the capabilities they need in `manifest.json`; the HappyView loader refuses a plugin whose WASM imports need more than it declares.
 
 | Plugin           | Namespace         | Capabilities                    | Provides                                                   |
 | ---------------- | ----------------- | -------------------------------- | ---------------------------------------------------------- |
@@ -71,12 +72,14 @@ any.
 | Plugin | Language | Capabilities | Target |
 | --- | --- | --- | --- |
 | `happyview-lua` | `lua` (PUC Lua 5.4.8) | `library:call`, `script:host`, `wasi:clock`, `wasi:random`, `wasi:stdio` | `wasm32-wasip1` |
+| `happyview-javascript` | `javascript` (QuickJS-ng) | `library:call`, `script:host`, `wasi:clock`, `wasi:random`, `wasi:stdio` | `wasm32-wasip1` |
 
-It is the only member of this workspace that is not pure Rust on
-`wasm32-unknown-unknown`: it vendors PUC Lua, which is compiled with clang
-from wasi-sdk 34.0, so it is kept out of the workspace's default member set and
-has a CI job of its own. `plugins/happyview/lua/README.md` has the contract it
-gives a script and the environment it needs to build.
+They are the only members of this workspace that are not pure Rust on
+`wasm32-unknown-unknown`: each vendors an engine written in C — PUC Lua and
+QuickJS-ng — which is compiled with clang from wasi-sdk 34.0, so they are kept
+out of the workspace's default member set and have a CI job of their own. Each
+one's README has the contract it gives a script and the environment it needs
+to build.
 
 ## Writing a plugin with the SDK
 
@@ -199,7 +202,7 @@ cargo build --release --target wasm32-unknown-unknown
 # Plugins will be in target/wasm32-unknown-unknown/release/*.wasm
 ```
 
-`happyview-lua` is excluded from that build and needs wasi-sdk; its own README has the environment.
+`happyview-lua` and `happyview-javascript` are excluded from that build and need wasi-sdk; each one's own README has the environment.
 
 ## Configuration
 
