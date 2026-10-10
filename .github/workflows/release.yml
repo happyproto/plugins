@@ -44,6 +44,10 @@ jobs:
   # because a failure here should name the interpreter rather than look like
   # the workspace is broken. One matrix entry each, so a failure also names
   # which of the two.
+  #
+  # `checked` is every crate an entry lints and tests. The QuickJS engine is
+  # not a plugin and has no module to build, so it rides with the JavaScript
+  # interpreter, the plugin that runs its language unchanged.
   interpreter:
     runs-on: ubuntu-24.04
     strategy:
@@ -51,9 +55,11 @@ jobs:
       matrix:
         include:
           - crate: happyview-lua
+            checked: -p happyview-lua
             module: happyview_lua
             module_env: HAPPYVIEW_LUA_WASM
           - crate: happyview-javascript
+            checked: -p happyview-javascript -p happyview-quickjs
             module: happyview_javascript
             module_env: HAPPYVIEW_JAVASCRIPT_WASM
     name: interpreter (${{ matrix.crate }})
@@ -85,7 +91,7 @@ jobs:
       # target-scoped, and a `-L` into the wasi sysroot breaks every host build
       # in the same job, the crate's own tests included.
       - name: Clippy
-        run: cargo clippy -j 2 -p ${{ matrix.crate }} --target wasm32-wasip1 -- -D warnings
+        run: cargo clippy -j 2 ${{ matrix.checked }} --target wasm32-wasip1 -- -D warnings
 
       # Native, where the crate's logic is testable: the conformance corpora,
       # the 257 Lua 5.4 probes, the JavaScript event loop against a fake host,
@@ -98,7 +104,7 @@ jobs:
       - name: Test
         env:
           TZ: UTC
-        run: cargo test -j 2 -p ${{ matrix.crate }}
+        run: cargo test -j 2 ${{ matrix.checked }}
 
       - name: Build
         run: cargo build -j 2 --release -p ${{ matrix.crate }} --target wasm32-wasip1
