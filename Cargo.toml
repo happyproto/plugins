@@ -8,9 +8,10 @@ members = [
 ]
 # `happyview-lua` vendors PUC Lua and `happyview-quickjs` QuickJS-ng, which
 # compile only for a target their C toolchain knows, so neither they nor
-# `happyview-javascript`, built on the QuickJS engine, are pure-Rust
-# `wasm32-unknown-unknown` plugins. Keeping them out of the default set leaves
-# a bare workspace build building the members that share one target.
+# `happyview-javascript` and `happyview-typescript`, built on the QuickJS
+# engine, are pure-Rust `wasm32-unknown-unknown` plugins. Keeping them out of
+# the default set leaves a bare workspace build building the members that
+# share one target.
 default-members = [
     "plugins/happyview/atproto",
     "plugins/happyview/auth-itch",
