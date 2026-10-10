@@ -11,13 +11,13 @@ env:
 
 jobs:
   fmt:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
 
   clippy:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: rustup target add wasm32-unknown-unknown
@@ -27,7 +27,7 @@ jobs:
   # beside it. A mistake there releases nothing, silently, so it is tested
   # before anything is.
   release-config:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,7 +36,7 @@ jobs:
       - run: node --test release/*.test.mjs
 
   build:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     needs: [fmt, clippy]
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
   # not a plugin and has no module to build, so it rides with the JavaScript
   # interpreter, the plugin that runs its language unchanged.
   interpreter:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -140,7 +140,7 @@ jobs:
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build, interpreter, release-config]
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     permissions:
       contents: write
       issues: write
