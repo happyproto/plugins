@@ -4,6 +4,7 @@
 
 mod budget;
 mod builtins;
+mod concurrent;
 mod conformance;
 mod convert;
 mod ctx;
@@ -33,8 +34,10 @@ interpreter_plugin! {
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     let lua = sandbox::create(&input.removed_globals).map_err(interpreter_error)?;
-    require::install(&lua, &input.libraries).map_err(interpreter_error)?;
+    // The budget goes first: `internal.async` resumes through the catch guard
+    // it installs, and takes it when `require` is installed.
     let budget = budget::install(&lua, &input.limits).map_err(interpreter_error)?;
+    require::install(&lua, &input.libraries).map_err(interpreter_error)?;
 
     if let Err(e) = lua
         .load(input.source.as_str())
@@ -367,6 +370,27 @@ mod tests {
             let (kind, message, _, _) = failure_of(output);
             assert_eq!(kind, ScriptErrorKind::Timeout, "{source}");
             assert!(message.contains("execution limit"), "{source}: {message}");
+        }
+    }
+
+    /// `async.all` resumes its functions itself, and catches what they raise
+    /// until every one has finished, so it has to be one more layer the spent
+    /// budget walks out through.
+    #[test]
+    fn an_instruction_budget_ends_a_run_inside_async_all() {
+        for body in [
+            "async.all(function() while true do end end)",
+            "async.all(function() return 1 end, function() while true do end end)",
+            "while true do pcall(async.all, function() while true do end end) end",
+            "return { async.all(function() pcall(function() while true do end end) return 1 end, \
+                 function() return 2 end) }",
+        ] {
+            let source =
+                format!("local async = require('internal.async') function handle() {body} end");
+            let output = run_bounded(input_with_limits(&source, json!(10_000), 67_108_864));
+            let (kind, message, _, _) = failure_of(output);
+            assert_eq!(kind, ScriptErrorKind::Timeout, "{body}");
+            assert!(message.contains("execution limit"), "{body}: {message}");
         }
     }
 

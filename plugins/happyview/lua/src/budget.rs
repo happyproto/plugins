@@ -30,7 +30,13 @@ xpcall = guarded(xpcall)
 coroutine.resume = guarded(coroutine.resume)
 local wrap = coroutine.wrap
 coroutine.wrap = function(f) return guarded(wrap(f)) end
+return coroutine.resume
 "#;
+
+/// Where the guarded `coroutine.resume` is kept for `internal.async`, whose
+/// scheduler resumes through it. Kept apart from the global, which a script
+/// may reassign.
+pub const RESUME_KEY: &str = "happyview.budget.resume";
 
 /// The message a spent budget raises. The host writes the sentence a caller
 /// sees; this is what reaches the event log.
@@ -81,9 +87,11 @@ pub fn install(lua: &Lua, limits: &ExecuteLimits) -> LuaResult<Budget> {
     let spent_flag = Arc::clone(&budget.spent);
     let tripped = lua.create_function(move |_, ()| Ok(spent_flag.load(Ordering::Relaxed)))?;
     let raise = lua.create_function(|_, ()| -> LuaResult<()> { Err(spent()) })?;
-    lua.load(CATCH_GUARDS)
+    let resume: mlua::Function = lua
+        .load(CATCH_GUARDS)
         .set_name("=catch_guards")
-        .call::<()>((tripped, raise))?;
+        .call((tripped, raise))?;
+    lua.set_named_registry_value(RESUME_KEY, resume)?;
 
     // mlua's own ceiling, which refuses an allocation as a Lua error rather
     // than as a trap. The host sets a wasm-level one above it, so the clean

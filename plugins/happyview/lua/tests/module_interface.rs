@@ -29,11 +29,14 @@ const EXPECTED_EXPORTS: &[&str] = &[
     "validate",
 ];
 
-/// The two bridge imports plus the four `script:host` ones. An interpreter
-/// needs no other host function: everything a script can reach arrives
-/// through `require`.
+/// The four bridge imports — a call, a call started and a wait on started
+/// ones for `internal.async`, and the surface — plus the four `script:host`
+/// ones. An interpreter needs no other host function: everything a script can
+/// reach arrives through `require`.
 const ALLOWED_ENV_IMPORTS: &[&str] = &[
     "host_call_library",
+    "host_call_library_start",
+    "host_call_library_wait_any",
     "host_get_api_surface",
     "host_job_progress",
     "host_job_should_stop",
