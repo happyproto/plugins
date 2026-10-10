@@ -2,8 +2,7 @@
 # `libwasi-emulated-signal`, neither of which rustc's bundled wasi-libc ships.
 # Without `CC_wasm32_wasip1` the platform's own clang runs and reports "no
 # available targets are compatible with triple wasm32-wasip1", which names
-# neither the toolchain nor the fix. Only the two interpreters need any of
-# this.
+# neither the toolchain nor the fix. Only the interpreters need any of this.
 #
 # `WASI_SDK` is `rquickjs-sys`'s own: it compiles QuickJS-ng with the clang it
 # finds there, and without it downloads a wasi-sdk of its own choosing into
