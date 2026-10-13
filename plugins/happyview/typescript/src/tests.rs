@@ -10,6 +10,7 @@ use happyview_plugin_sdk::{
     ValidateError, ValidateInput, ValidateOutput,
 };
 use happyview_quickjs::fake::Fake;
+use happyview_quickjs::{Frontend, Position};
 use serde_json::json;
 
 use super::*;
@@ -379,4 +380,25 @@ fn validate_accepts_a_script_that_imports_libraries_any_way() {
 fn validate_refuses_a_script_with_no_default_function() {
     let output = validated("export const handle = (): number => 1;");
     assert_eq!(output.errors[0].kind, ScriptErrorKind::MissingHandle);
+}
+
+#[test]
+fn the_transforms_map_is_kept_and_reads_back_to_the_same_positions() {
+    let source = "enum Color {\n  Red,\n  Green,\n}\nexport default function handle(): number {\n  return Color.Green;\n}\n";
+    let prepared = crate::frontend::TypeScript
+        .prepare(source)
+        .expect("prepares");
+    let json = prepared.source_map.as_deref().expect("the map is kept");
+    let read = crate::frontend::TypeScript
+        .read_map(json)
+        .expect("the map reads back");
+    let probe = Position {
+        line: prepared.code.lines().count() as u32 - 1,
+        column: 1,
+    };
+    assert_eq!(
+        happyview_quickjs::remap(Some(&read), probe),
+        happyview_quickjs::remap(prepared.map.as_ref(), probe)
+    );
+    assert!(happyview_quickjs::JavaScript.read_map("{}").is_err());
 }

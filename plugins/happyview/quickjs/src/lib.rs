@@ -38,7 +38,7 @@ pub use backend::fake;
 pub use backend::Backend;
 use budget::Budget;
 use calls::{Calls, ClearOnDrop, Unsettled};
-pub use positions::{Chunks, Mapping, Position, SourceMap};
+pub use positions::{remap, Chunks, Mapping, Position, SourceMap};
 
 /// The step from what an author wrote to the JavaScript QuickJS compiles.
 /// It is the only thing a language plugin supplies: what runs afterwards,
@@ -48,6 +48,13 @@ pub trait Frontend {
     /// already carries its line in the author's own source, because the
     /// front end is the only thing that knows where that is.
     fn prepare(&self, source: &str) -> Result<Prepared, Vec<ValidateError>>;
+
+    /// A map [`Prepared::source_map`] carried, read back. An artifact keeps
+    /// its map as text, and a run from the artifact reads it here rather
+    /// than preparing the source again.
+    fn read_map(&self, _json: &str) -> Result<SourceMap, String> {
+        Err("this language's front end writes no source map".to_string())
+    }
 }
 
 /// A script ready for the engine.
@@ -57,6 +64,9 @@ pub struct Prepared {
     /// Where `code` came from in the source, when the front end moved
     /// anything. `None` says every position is already the author's.
     pub map: Option<SourceMap>,
+    /// `map` as text this front end's [`Frontend::read_map`] reads back,
+    /// which is what a prepared artifact keeps.
+    pub source_map: Option<String>,
 }
 
 /// JavaScript itself, which is what the engine already runs: nothing to
@@ -68,6 +78,7 @@ impl Frontend for JavaScript {
         Ok(Prepared {
             code: source.to_string(),
             map: None,
+            source_map: None,
         })
     }
 }
