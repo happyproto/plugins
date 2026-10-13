@@ -46,6 +46,11 @@ const ALLOWED_ENV_IMPORTS: &[&str] = &[
     "host_script_log",
 ];
 
+/// Imports the module must carry. `ALLOWED_ENV_IMPORTS` is an allow-list, so
+/// it cannot notice an import that has gone missing; this is what proves a
+/// relative `require` still reaches the host.
+const REQUIRED_ENV_IMPORTS: &[&str] = &["host_module_resolve"];
+
 /// What `wasi:clock`, `wasi:random` and `wasi:stdio` grant, plus the
 /// lifecycle imports a wasi-libc build links that answer from an empty
 /// context. Every other preview-1 import is refused at load, so `path_open`
@@ -138,6 +143,15 @@ fn the_built_module_exports_the_interpreter_abi_and_imports_only_what_the_host_a
         .filter(|n| !allowed_env.contains(n.as_str()))
     {
         problems.push(format!("env import the host does not define: {name}"));
+    }
+
+    for name in REQUIRED_ENV_IMPORTS
+        .iter()
+        .filter(|n| !env_imports.contains(**n))
+    {
+        problems.push(format!(
+            "env import the module must carry is absent: {name}"
+        ));
     }
 
     let allowed_wasi: BTreeSet<&str> = ALLOWED_WASI_IMPORTS.iter().copied().collect();

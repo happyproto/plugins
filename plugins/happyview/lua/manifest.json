@@ -7,6 +7,7 @@
   "description": "Lua 5.4 for HappyView scripts.",
   "language_id": "lua",
   "file_extension": "lua",
+  "extensions": ["lua"],
   "monaco_language": "lua",
   "supports_libraries": ["*"],
   "capabilities": [
