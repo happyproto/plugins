@@ -8,6 +8,7 @@
 //! install of its own while everything a script can observe at run time is
 //! one implementation.
 
+mod artifact;
 mod backend;
 mod bridge;
 mod budget;
