@@ -1102,3 +1102,135 @@ fn validate_reports_the_literal_relative_imports() {
         vec![("./lib/format.js".into(), 1), ("../late.js".into(), 3)]
     );
 }
+
+// --- prepared artifacts ---------------------------------------------------
+
+fn prepared_artifact(source: &str, chunk_name: &str) -> happyview_plugin_sdk::PreparedArtifact {
+    let validated = validate_with(source, chunk_name, true, false);
+    assert!(validated.valid, "{:?}", validated.errors);
+    validated.artifact.expect("an artifact")
+}
+
+#[test]
+fn a_run_from_the_artifact_needs_no_source_and_keeps_its_positions() {
+    let name = "src/jobs/x.js";
+    let artifact = prepared_artifact(
+        "import json from 'internal.json';\nexport default function handle(input) {\n  if (input.fail) throw new Error('boom');\n  return { encoded: json.encode({ a: 1 }) };\n}\n",
+        name,
+    );
+    let mut sent = input("", json!({ "chunk_name": name }));
+    sent.artifact = Some(artifact);
+    assert_eq!(
+        returned(execute_script(&sent).unwrap()).0,
+        json!({ "encoded": r#"{"a":1}"# })
+    );
+
+    sent.input = json!({ "fail": true });
+    match execute_script(&sent).unwrap() {
+        ExecuteOutput::Error {
+            chunk,
+            line,
+            message,
+            ..
+        } => {
+            assert_eq!(chunk.as_deref(), Some(name));
+            assert_eq!(line, Some(3));
+            assert_eq!(message, "boom");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_artifact_this_build_cannot_load_falls_back_to_the_source_or_fails_by_name() {
+    let mut artifact = prepared_artifact("export default () => 'from bytecode';", "script");
+    artifact.engine = "quickjs-ng-0.10.0".to_string();
+    let mut sent = execute_input("export default () => 'from source';");
+    sent.artifact = Some(artifact);
+    assert_eq!(
+        returned(execute_script(&sent).unwrap()).0,
+        json!("from source")
+    );
+
+    sent.source = String::new();
+    let refused = execute_script(&sent).unwrap_err();
+    assert_eq!(refused.code, "INTERPRETER_ERROR");
+    assert!(
+        refused.message.contains("quickjs-ng-0.10.0"),
+        "{}",
+        refused.message
+    );
+}
+
+#[test]
+fn an_artifact_compiled_under_another_name_is_refused() {
+    let artifact = prepared_artifact("export default () => 1;", "src/a.js");
+    let mut sent = input("", json!({ "chunk_name": "src/b.js" }));
+    sent.artifact = Some(artifact);
+    let (kind, message, ..) = failure_of(execute_script(&sent).unwrap());
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert_eq!(
+        message,
+        "the prepared artifact for 'src/b.js' was compiled as 'src/a.js'"
+    );
+}
+
+#[test]
+fn a_script_with_top_level_await_runs_from_its_artifact() {
+    let artifact = prepared_artifact(
+        "import db from 'happyview.db';\nconst first = await db.get('x');\nexport default () => first;",
+        "script",
+    );
+    let (output, _) = run_with(
+        echo(fake()),
+        "",
+        json!({ "artifact": serde_json::to_value(&artifact).unwrap() }),
+    );
+    assert_eq!(
+        returned(output).0,
+        json!({ "via": "happyview-db.get", "args": ["x"] })
+    );
+}
+
+/// QuickJS does not verify bytecode, so bytes reach its reader only from an
+/// artifact stamped by this build. Source text is compiled as source however
+/// much it looks like bytecode.
+#[test]
+fn source_that_looks_like_bytecode_is_compiled_as_source() {
+    let artifact = prepared_artifact("export default () => 'from bytecode';", "script");
+    let source: String = artifact.bytes.iter().map(|&byte| byte as char).collect();
+    let (kind, message, ..) = failure_of(execute_script(&execute_input(&source)).unwrap());
+    assert!(
+        matches!(kind, ScriptErrorKind::Syntax | ScriptErrorKind::Runtime),
+        "{kind:?}: {message}"
+    );
+}
+
+/// Bytes that would fault QuickJS's reader are never handed to it when the
+/// stamp is not this build's, whichever half of the stamp is wrong.
+#[test]
+fn an_artifact_whose_stamp_mismatches_is_never_read() {
+    let garbage = vec![0xff; 64];
+    let stamped = artifact::prepared(garbage.clone(), None);
+    let mut other_format = stamped.clone();
+    other_format.format = "lua-bytecode".to_string();
+    let mut other_engine = stamped;
+    other_engine.engine = "quickjs-ng-0.10.0".to_string();
+
+    for (artifact, named) in [
+        (other_format, "lua-bytecode"),
+        (other_engine, "quickjs-ng-0.10.0"),
+    ] {
+        let mut sent = execute_input("export default () => 'from source';");
+        sent.artifact = Some(artifact);
+        assert_eq!(
+            returned(execute_script(&sent).unwrap()).0,
+            json!("from source")
+        );
+
+        sent.source = String::new();
+        let refused = execute_script(&sent).unwrap_err();
+        assert_eq!(refused.code, "INTERPRETER_ERROR");
+        assert!(refused.message.contains(named), "{}", refused.message);
+    }
+}

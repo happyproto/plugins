@@ -35,6 +35,10 @@ fn run(source: &str) -> ExecuteOutput {
     execute_script(&input(source, json!({}))).expect("an output, not an envelope error")
 }
 
+fn run_input(input: &ExecuteInput) -> ExecuteOutput {
+    execute_script(input).expect("an output, not an envelope error")
+}
+
 fn validated(source: &str) -> ValidateOutput {
     validate_source(&ValidateInput {
         source: source.to_string(),
@@ -426,4 +430,23 @@ fn typescript_imports_are_the_ones_that_run_on_their_typescript_lines() {
         found,
         vec![("./lib/format".into(), 2), ("./lib/helper".into(), 4)]
     );
+}
+
+#[test]
+fn a_typescript_artifact_places_errors_on_typescript_lines_with_no_source() {
+    let source = "enum Color {\n  Red,\n  Green,\n}\nexport default function handle(): number {\n  const t: any = undefined;\n  return t.x + Color.Green;\n}\n";
+    let validated = validate_source(&ValidateInput {
+        source: source.to_string(),
+        prepare: true,
+        ..Default::default()
+    })
+    .unwrap();
+    let artifact = validated.artifact.expect("an artifact");
+    assert!(artifact.source_map.is_some());
+
+    let mut sent = input("", json!({}));
+    sent.artifact = Some(artifact);
+    let (kind, _, line, raw) = failure_of(run_input(&sent));
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert_eq!(line, Some(7), "{raw}");
 }
