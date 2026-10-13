@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::backend::fake::{Fake, Order};
-use happyview_plugin_sdk::{ApiExport, ApiMethod, ApiSurface};
+use happyview_plugin_sdk::{ApiExport, ApiMethod, ApiSurface, ChunkRole};
 use serde_json::json;
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
@@ -696,7 +696,8 @@ fn an_import_nothing_serves_is_refused_naming_what_would() {
     let path_refusal = |name: &str| {
         format!(
             "cannot import '{name}': a script imports built-in modules and installed \
-             libraries by name, never a path or a URL"
+             libraries by name, and its project's own modules by a path starting with ./ or ../, \
+             never an absolute path or a URL"
         )
     };
     for (source, expected) in [
@@ -807,6 +808,78 @@ fn console_reaches_the_log() {
 
 // --- validate -------------------------------------------------------------
 
+fn validate_with(source: &str, chunk_name: &str, prepare: bool, module: bool) -> ValidateOutput {
+    let mut input = validate_input(source);
+    input.chunk_name = Some(chunk_name.to_string());
+    input.prepare = prepare;
+    input.role = if module {
+        ChunkRole::Module
+    } else {
+        ChunkRole::Handler
+    };
+    validate_source(&input).unwrap()
+}
+
+#[test]
+fn validate_prepares_only_when_asked_and_only_what_is_valid() {
+    let source = "export default () => 1;";
+    assert!(validate_with(source, "script", false, false)
+        .artifact
+        .is_none());
+    assert!(validate_with("export default (", "script", true, false)
+        .artifact
+        .is_none());
+    let artifact = validate_with(source, "script", true, false)
+        .artifact
+        .expect("a valid, prepared script carries its artifact");
+    assert_eq!(artifact.format, "quickjs-bytecode");
+    assert_eq!(artifact.source_map, None);
+    assert!(!artifact.bytes.is_empty());
+}
+
+#[test]
+fn a_relative_import_is_a_stub_while_validating() {
+    let validated = validate_with(
+        "import { format } from './lib/format.js';\nimport helper from '../helper.js';\nexport default () => format(helper);",
+        "src/lexicons/app/test/q.js",
+        true,
+        false,
+    );
+    assert!(validated.valid, "{:?}", validated.errors);
+}
+
+#[test]
+fn a_module_validates_without_a_default_export() {
+    let source = "export function shout(s) { return s.toUpperCase(); }";
+    assert_eq!(
+        validate_with(source, "lib/m.js", true, false).errors[0].kind,
+        ScriptErrorKind::MissingHandle
+    );
+    let validated = validate_with(source, "lib/m.js", true, true);
+    assert!(validated.valid, "{:?}", validated.errors);
+    assert!(validated.artifact.is_some());
+}
+
+#[test]
+fn a_path_or_a_url_is_still_refused_while_validating() {
+    for name in ["/etc/passwd", "https://example.com/x.js", ".hidden"] {
+        let validated = validate_with(
+            &format!("import x from '{name}';\nexport default () => x;"),
+            "script",
+            false,
+            false,
+        );
+        assert!(!validated.valid, "{name}");
+        assert!(
+            validated.errors[0]
+                .message
+                .contains(&format!("cannot import '{name}'")),
+            "{name}: {:?}",
+            validated.errors
+        );
+    }
+}
+
 #[test]
 fn validate_refuses_what_a_run_refuses() {
     for (source, expected) in [
@@ -821,7 +894,7 @@ fn validate_refuses_what_a_run_refuses() {
             ScriptErrorKind::Runtime,
         ),
         (
-            "import x from './y.js';\nexport default () => 1;",
+            "import x from '/y.js';\nexport default () => 1;",
             ScriptErrorKind::Runtime,
         ),
         (

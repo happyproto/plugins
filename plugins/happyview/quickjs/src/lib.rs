@@ -27,9 +27,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use happyview_plugin_sdk::{
-    ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError, ScriptErrorKind, ScriptValueKind,
-    ValidateError, ValidateInput, ValidateOutput,
+    ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError, ScriptErrorKind,
+    ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
 };
+use rquickjs::module::WriteOptions;
 use rquickjs::prelude::Coerced;
 use rquickjs::{Ctx, FromJs, Module, Promise, Value};
 
@@ -129,7 +130,7 @@ pub fn execute_with(
     let (runtime, budget) = budget::runtime().map_err(interpreter_error)?;
     let calls = Rc::new(Calls::new(backend.clone()));
     runtime.set_loader(
-        imports::Names,
+        imports::Specifiers::running(),
         imports::Libraries::new(backend.clone(), &input.libraries, calls.clone()),
     );
     let context = sandbox::create(&runtime, backend.clone()).map_err(interpreter_error)?;
@@ -302,7 +303,7 @@ pub fn validate(
     let name = input.chunk_name.as_deref().unwrap_or(DEFAULT_CHUNK);
     let wanted: Wanted = Rc::new(RefCell::new(BTreeMap::new()));
     for _ in 0..=MAX_STUBBED_IMPORTS {
-        match validate_once(&prepared, name, &wanted)? {
+        match validate_once(&prepared, name, input, &wanted)? {
             Attempt::Done(output) => return Ok(output),
             Attempt::Wants(module, export) => {
                 // A name already stubbed and still missing is not one more
@@ -338,12 +339,17 @@ enum Attempt {
 /// Compile and evaluate file scope with every import a stub, then check for
 /// a default export that is a function. Evaluating under a budget is the
 /// point: a loop at file scope fails rather than hanging the editor.
-fn validate_once(prepared: &Prepared, name: &str, wanted: &Wanted) -> Result<Attempt, PluginError> {
+fn validate_once(
+    prepared: &Prepared,
+    name: &str,
+    input: &ValidateInput,
+    wanted: &Wanted,
+) -> Result<Attempt, PluginError> {
     let (runtime, budget) = budget::runtime().map_err(interpreter_error)?;
     let backend: Rc<dyn Backend> = Rc::new(backend::Validating);
     let calls = Calls::new(backend.clone());
     runtime.set_loader(
-        imports::Names,
+        imports::Specifiers::validating(),
         imports::Stubs {
             wanted: wanted.clone(),
         },
@@ -373,6 +379,17 @@ fn validate_once(prepared: &Prepared, name: &str, wanted: &Wanted) -> Result<Att
             Ok(module) => module,
             Err(e) => return Ok(refused(ScriptErrorKind::Syntax, e)),
         };
+        // Written before file scope runs: what is kept is the compiled
+        // module, and evaluating it replaces its function object.
+        let bytes = if input.prepare {
+            Some(
+                module
+                    .write(WriteOptions::default())
+                    .map_err(interpreter_error)?,
+            )
+        } else {
+            None
+        };
         let module = match module.eval() {
             Ok((module, evaluated)) => match calls.run(&ctx, &evaluated, &budget) {
                 Ok(_) => module,
@@ -387,12 +404,22 @@ fn validate_once(prepared: &Prepared, name: &str, wanted: &Wanted) -> Result<Att
             },
             Err(e) => return Ok(refused(ScriptErrorKind::Runtime, e)),
         };
-        Ok(match module.get::<_, Value>("default") {
-            Ok(handle) if handle.is_function() => Attempt::Done(ValidateOutput {
+        let valid = || {
+            Attempt::Done(ValidateOutput {
                 valid: true,
-                errors: Vec::new(),
+                artifact: bytes
+                    .clone()
+                    .map(|bytes| artifact::prepared(bytes, prepared.source_map.clone())),
                 ..ValidateOutput::default()
-            }),
+            })
+        };
+        // A module or a test is imported or run, never called, so it has no
+        // default export to require.
+        if input.role != ChunkRole::Handler {
+            return Ok(valid());
+        }
+        Ok(match module.get::<_, Value>("default") {
+            Ok(handle) if handle.is_function() => valid(),
             Ok(_) => done(ScriptErrorKind::MissingHandle, MISSING_HANDLE),
             Err(e) => refused(ScriptErrorKind::Runtime, e),
         })
