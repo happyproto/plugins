@@ -104,6 +104,7 @@ mod corpus {
         crate::validate_source(&ValidateInput {
             source: source.to_string(),
             removed_globals: REMOVED_GLOBALS.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
         })
         .expect("validate should answer an output rather than an envelope error")
     }
@@ -168,6 +169,7 @@ mod corpus {
             let without_guard = crate::validate_source(&ValidateInput {
                 source,
                 removed_globals: Vec::new(),
+                ..Default::default()
             })
             .unwrap();
             assert!(!without_guard.valid, "{name}");
@@ -327,6 +329,8 @@ mod probes {
     fn run(source: String) -> Result<String, String> {
         let input = ExecuteInput {
             source,
+            artifact: None,
+            chunk_name: "script".to_string(),
             kind: ScriptKind::XrpcQuery,
             input: serde_json::json!({}),
             context: ExecuteContext {

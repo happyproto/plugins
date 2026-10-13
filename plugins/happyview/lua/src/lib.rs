@@ -104,12 +104,14 @@ fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError>
                 line,
                 message,
             }],
+            ..ValidateOutput::default()
         });
     }
     match lua.globals().get::<mlua::Function>("handle") {
         Ok(_) => Ok(ValidateOutput {
             valid: true,
             errors: Vec::new(),
+            ..ValidateOutput::default()
         }),
         Err(_) => Ok(invalid(ScriptErrorKind::MissingHandle, MISSING_HANDLE)),
     }
@@ -132,6 +134,7 @@ fn failure(kind: ScriptErrorKind, message: impl Into<String>) -> ExecuteOutput {
         raw: message.clone(),
         message,
         line: None,
+        chunk: None,
     }
 }
 
@@ -170,6 +173,7 @@ fn script_failure(
         message,
         line,
         raw,
+        chunk: None,
     }
 }
 
@@ -201,6 +205,7 @@ fn invalid(kind: ScriptErrorKind, message: impl Into<String>) -> ValidateOutput 
             line: None,
             message: message.into(),
         }],
+        ..ValidateOutput::default()
     }
 }
 
@@ -281,6 +286,7 @@ mod tests {
                 message,
                 line,
                 raw,
+                ..
             } => (kind, message, line, raw),
             other => panic!("expected a failure, got {other:?}"),
         }
