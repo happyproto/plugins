@@ -170,6 +170,7 @@ pub fn install(lua: &Lua) -> LuaResult<()> {
     let wait = lua.create_function(wait)?;
     let (shim, all): (Function, Function) = lua
         .load(SCHEDULER)
+        .set_mode(mlua::chunk::ChunkMode::Text)
         .set_name(format!("={CHUNK_NAME}"))
         .call((resume, finish, wait))?;
     lua.set_named_registry_value(SHIM_KEY, shim)?;

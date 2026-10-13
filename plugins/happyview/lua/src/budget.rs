@@ -89,6 +89,7 @@ pub fn install(lua: &Lua, limits: &ExecuteLimits) -> LuaResult<Budget> {
     let raise = lua.create_function(|_, ()| -> LuaResult<()> { Err(spent()) })?;
     let resume: mlua::Function = lua
         .load(CATCH_GUARDS)
+        .set_mode(mlua::chunk::ChunkMode::Text)
         .set_name("=catch_guards")
         .call((tripped, raise))?;
     lua.set_named_registry_value(RESUME_KEY, resume)?;
