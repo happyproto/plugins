@@ -4,7 +4,8 @@
 //! calls in an order the test chose.
 
 use happyview_plugin_sdk::{
-    host, ApiSurface, JobProgressRequest, PluginError, ScriptLogRequest, Value as Json,
+    host, ApiSurface, JobProgressRequest, ModuleResolve, PluginError, ResolvedModule,
+    ScriptLogRequest, Value as Json,
 };
 
 pub trait Backend {
@@ -25,6 +26,18 @@ pub trait Backend {
     fn job_progress(&self, request: &JobProgressRequest) -> Result<(), PluginError>;
     fn job_should_stop(&self) -> Result<bool, PluginError>;
     fn job_wait(&self, seconds: f64) -> Result<(), PluginError>;
+    /// A relative import's module, from the run's project. The default is a
+    /// run with no project, which is what validation is and what every test
+    /// backend that predates local modules stands for.
+    fn module_resolve(&self, request: &ModuleResolve) -> Result<ResolvedModule, PluginError> {
+        Err(PluginError::new(
+            "NOT_FOUND",
+            format!(
+                "cannot import '{}' from '{}': this run has no project to resolve it in",
+                request.specifier, request.referrer
+            ),
+        ))
+    }
 }
 
 /// The host this module is instantiated by. Off wasm every wrapper answers

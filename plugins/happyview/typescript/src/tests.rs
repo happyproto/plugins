@@ -38,6 +38,7 @@ fn validated(source: &str) -> ValidateOutput {
     validate_source(&ValidateInput {
         source: source.to_string(),
         removed_globals: Vec::new(),
+        ..Default::default()
     })
     .expect("an output, not an envelope error")
 }
@@ -56,6 +57,7 @@ fn failure_of(output: ExecuteOutput) -> (ScriptErrorKind, String, Option<u32>, S
             message,
             line,
             raw,
+            ..
         } => (kind, message, line, raw),
         other => panic!("expected a failure, got {other:?}"),
     }

@@ -261,6 +261,7 @@ pub fn validate(
             return Ok(ValidateOutput {
                 valid: false,
                 errors,
+                ..ValidateOutput::default()
             })
         }
     };
@@ -354,6 +355,7 @@ fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, Plugin
             Ok(handle) if handle.is_function() => Attempt::Done(ValidateOutput {
                 valid: true,
                 errors: Vec::new(),
+                ..ValidateOutput::default()
             }),
             Ok(_) => done(ScriptErrorKind::MissingHandle, MISSING_HANDLE),
             Err(e) => refused(ScriptErrorKind::Runtime, e),
@@ -392,6 +394,7 @@ fn not_prepared(errors: Vec<ValidateError>) -> ExecuteOutput {
             message: first.message,
             line: first.line,
             raw,
+            chunk: None,
         },
         None => failure(ScriptErrorKind::Syntax, "the script could not be prepared"),
     }
@@ -404,6 +407,7 @@ fn failure(kind: ScriptErrorKind, message: impl Into<String>) -> ExecuteOutput {
         raw: message.clone(),
         message,
         line: None,
+        chunk: None,
     }
 }
 
@@ -431,6 +435,7 @@ fn script_failure(
         message,
         line: thrown.line,
         raw: thrown.raw,
+        chunk: None,
     }
 }
 
@@ -550,6 +555,7 @@ fn invalid(kind: ScriptErrorKind, line: Option<u32>, message: impl Into<String>)
             line,
             message: message.into(),
         }],
+        ..ValidateOutput::default()
     }
 }
 
