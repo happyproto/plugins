@@ -4,6 +4,7 @@
 
 mod budget;
 mod builtins;
+mod chunk;
 mod concurrent;
 mod conformance;
 mod convert;
@@ -39,12 +40,11 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     let budget = budget::install(&lua, &input.limits).map_err(interpreter_error)?;
     require::install(&lua, &input.libraries).map_err(interpreter_error)?;
 
-    if let Err(e) = lua
-        .load(input.source.as_str())
-        .set_name(sandbox::CHUNK_NAME)
-        .exec()
+    let known = [input.chunk_name.clone()];
+    if let Err(e) = chunk::load_source(&lua, &input.chunk_name, &input.source)
+        .and_then(|main| main.call::<()>(()))
     {
-        return Ok(script_failure(load_failure_kind(&e), &e, &budget));
+        return Ok(script_failure(load_failure_kind(&e), &e, &budget, &known));
     }
     let Ok(handle) = lua.globals().get::<mlua::Function>("handle") else {
         return Ok(failure(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
@@ -56,12 +56,26 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
         Ok(arguments) => arguments,
         // A ceiling small enough to refuse the arguments is the script's
         // limit being reached, not the interpreter failing.
-        Err(e) => return Ok(script_failure(ScriptErrorKind::Runtime, &e, &budget)),
+        Err(e) => {
+            return Ok(script_failure(
+                ScriptErrorKind::Runtime,
+                &e,
+                &budget,
+                &known,
+            ))
+        }
     };
 
     let returned: mlua::Value = match handle.call(arguments) {
         Ok(value) => value,
-        Err(e) => return Ok(script_failure(ScriptErrorKind::Runtime, &e, &budget)),
+        Err(e) => {
+            return Ok(script_failure(
+                ScriptErrorKind::Runtime,
+                &e,
+                &budget,
+                &known,
+            ))
+        }
     };
 
     // A script that reached a normal return with its budget spent has escaped
@@ -75,7 +89,12 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     let value_kind = value_kind(&returned);
     match convert::to_json(&lua, returned) {
         Ok(value) => Ok(ExecuteOutput::Returned { value, value_kind }),
-        Err(e) => Ok(script_failure(ScriptErrorKind::Runtime, &e, &budget)),
+        Err(e) => Ok(script_failure(
+            ScriptErrorKind::Runtime,
+            &e,
+            &budget,
+            &known,
+        )),
     }
 }
 
@@ -85,10 +104,9 @@ fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError>
     let lua = sandbox::create(&input.removed_globals).map_err(interpreter_error)?;
     require::install_stub(&lua).map_err(interpreter_error)?;
     let budget = budget::install(&lua, &VALIDATE_LIMITS).map_err(interpreter_error)?;
-    if let Err(e) = lua
-        .load(input.source.as_str())
-        .set_name(sandbox::CHUNK_NAME)
-        .exec()
+    let name = input.chunk_name.as_deref().unwrap_or(chunk::DEFAULT);
+    if let Err(e) =
+        chunk::load_source(&lua, name, &input.source).and_then(|main| main.call::<()>(()))
     {
         let kind = if budget.is_spent() {
             ScriptErrorKind::Timeout
@@ -96,13 +114,13 @@ fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError>
             load_failure_kind(&e)
         };
         let raw = e.to_string();
-        let (line, message) = split_position(&raw);
+        let located = chunk::locate(&raw, &[name.to_string()]);
         return Ok(ValidateOutput {
             valid: false,
             errors: vec![ValidateError {
                 kind,
-                line,
-                message,
+                line: located.line,
+                message: located.message,
             }],
             ..ValidateOutput::default()
         });
@@ -158,9 +176,10 @@ fn script_failure(
     default: ScriptErrorKind,
     error: &mlua::Error,
     budget: &budget::Budget,
+    known: &[String],
 ) -> ExecuteOutput {
     let raw = error.to_string();
-    let (line, message) = split_position(&raw);
+    let located = chunk::locate(&raw, known);
     let kind = if budget.is_spent() {
         ScriptErrorKind::Timeout
     } else if budget::is_memory_error(error) {
@@ -170,31 +189,11 @@ fn script_failure(
     };
     ExecuteOutput::Error {
         kind,
-        message,
-        line,
+        message: located.message,
+        line: located.line,
         raw,
-        chunk: None,
+        chunk: located.chunk,
     }
-}
-
-/// `[string "script"]:12: message` into its two halves, so the host is handed
-/// a line rather than left to parse one out.
-///
-/// The traceback goes first: it names only chunk lines and library frames,
-/// which is noise to a caller, and a position inside it would otherwise be
-/// read as the error's own. An error with no position keeps its whole text,
-/// which is why `error("x", 0)` reads as it was written.
-fn split_position(raw: &str) -> (Option<u32>, String) {
-    let raw = raw.split("\nstack traceback:").next().unwrap_or(raw);
-    if let Some(bracket) = raw.find("]:") {
-        let after = &raw[bracket + 2..];
-        if let Some(colon) = after.find(": ") {
-            if let Ok(line) = after[..colon].parse::<u32>() {
-                return (Some(line), after[colon + 2..].to_string());
-            }
-        }
-    }
-    (None, raw.to_string())
 }
 
 fn invalid(kind: ScriptErrorKind, message: impl Into<String>) -> ValidateOutput {
@@ -290,6 +289,53 @@ mod tests {
             } => (kind, message, line, raw),
             other => panic!("expected a failure, got {other:?}"),
         }
+    }
+
+    /// A project chunk's errors name its path, which is what a terminal
+    /// makes clickable and what the host prints.
+    #[test]
+    fn a_project_chunk_reports_its_path_and_line() {
+        let mut input = input_with_limits(
+            "function handle()\n  local t = nil\n  return t.x\nend",
+            json!(1_000_000),
+            67_108_864,
+        );
+        input.chunk_name = "src/lexicons/app/test/q.lua".to_string();
+        match run_bounded(input) {
+            ExecuteOutput::Error {
+                chunk, line, raw, ..
+            } => {
+                assert_eq!(
+                    chunk.as_deref(),
+                    Some("src/lexicons/app/test/q.lua"),
+                    "{raw}"
+                );
+                assert_eq!(line, Some(3), "{raw}");
+                assert!(raw.contains("src/lexicons/app/test/q.lua:3:"), "{raw}");
+            }
+            other => panic!("expected a failure, got {other:?}"),
+        }
+
+        let mut validate = validate_input("function handle(", &[]);
+        validate.chunk_name = Some("src/jobs/x.lua".to_string());
+        let refused = validate_source(&validate).unwrap();
+        assert_eq!(refused.errors[0].line, Some(1), "{:?}", refused.errors);
+    }
+
+    /// Bytecode handed in as source text is refused rather than run: only
+    /// the artifact field carries bytecode.
+    #[test]
+    fn bytecode_in_the_source_field_is_a_syntax_error() {
+        let lua = mlua::Lua::new();
+        let dumped = lua
+            .load("function handle() return 1 end")
+            .into_function()
+            .unwrap()
+            .dump(false);
+        let source = String::from_utf8_lossy(&dumped).into_owned();
+        let (kind, message, ..) = failure_of(execute_script(&execute_input(&source)).unwrap());
+        assert_eq!(kind, ScriptErrorKind::Syntax);
+        assert!(message.contains("binary chunk"), "{message}");
     }
 
     /// The host branches three ways on this, and a JSON `null` cannot tell a
