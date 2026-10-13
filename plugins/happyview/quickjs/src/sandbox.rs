@@ -143,6 +143,14 @@ pub(crate) mod tests {
         ));
     }
 
+    /// QuickJS does not verify bytecode, so the libc module that reads it must
+    /// not be reachable as a global either: the only bytecode a run loads is
+    /// an artifact the host supplied.
+    #[test]
+    fn the_bytecode_reader_is_not_a_global() {
+        assert!(eval_bool("typeof globalThis.bjson === 'undefined'"));
+    }
+
     /// The guest has no zone to read, so `Date` reads and writes UTC — which
     /// a native test only matches under `TZ=UTC`.
     #[test]
