@@ -16,3 +16,4 @@ happyview-quickjs = { path = "../quickjs" }
 [dev-dependencies]
 happyview-quickjs = { path = "../quickjs", features = ["testing"] }
 wasmparser = "0.236"
+serde_json = "1"

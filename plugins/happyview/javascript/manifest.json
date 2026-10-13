@@ -7,6 +7,7 @@
   "description": "JavaScript (QuickJS-ng) for HappyView scripts.",
   "language_id": "javascript",
   "file_extension": "js",
+  "extensions": ["js", "mjs"],
   "monaco_language": "javascript",
   "supports_libraries": ["*"],
   "capabilities": [
