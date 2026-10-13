@@ -6,8 +6,8 @@
 use std::rc::Rc;
 
 use happyview_plugin_sdk::{
-    ApiExport, ApiSurface, ExecuteInput, ExecuteOutput, ScriptErrorKind, ScriptValueKind,
-    ValidateError, ValidateInput, ValidateOutput,
+    ApiExport, ApiSurface, ChunkRole, ExecuteInput, ExecuteOutput, ScriptErrorKind,
+    ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
 };
 use happyview_quickjs::fake::Fake;
 use happyview_quickjs::{Frontend, Position};
@@ -400,8 +400,13 @@ fn the_transforms_map_is_kept_and_reads_back_to_the_same_positions() {
         line: prepared.code.lines().count() as u32 - 1,
         column: 1,
     };
+    let remapped = happyview_quickjs::remap(Some(&read), probe);
+    assert_ne!(
+        remapped, probe,
+        "the probe should be a position the map moves"
+    );
     assert_eq!(
-        happyview_quickjs::remap(Some(&read), probe),
+        remapped,
         happyview_quickjs::remap(prepared.map.as_ref(), probe)
     );
     assert!(happyview_quickjs::JavaScript.read_map("{}").is_err());
@@ -482,6 +487,46 @@ fn a_typescript_module_is_transformed_and_its_errors_land_on_its_own_lines() {
         ExecuteOutput::Error { chunk, line, .. } => {
             assert_eq!(chunk.as_deref(), Some("src/lib/fmt.ts"));
             assert_eq!(line, Some(6));
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_typescript_module_runs_from_its_artifact_with_no_source_on_its_own_lines() {
+    let id = "src/lib/fmt.ts";
+    let validated = validate_source(&ValidateInput {
+        source: "enum Size {\n  Small,\n  Large,\n}\nexport function label(t: any): string {\n  return t.name + Size.Large;\n}\n"
+            .to_string(),
+        chunk_name: Some(id.to_string()),
+        prepare: true,
+        role: ChunkRole::Module,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(validated.valid, "{:?}", validated.errors);
+    let artifact = validated.artifact.expect("an artifact");
+    assert!(artifact.source_map.is_some());
+
+    let failed = happyview_quickjs::execute_with(
+        &TypeScript,
+        &input(
+            "import { label } from './lib/fmt';\nexport default (): string => label(undefined);",
+            json!({ "chunk_name": "src/handler.ts" }),
+        ),
+        Rc::new(
+            Fake::new()
+                .extension("ts")
+                .module_artifact(id, "", artifact),
+        ),
+    )
+    .unwrap();
+    match failed {
+        ExecuteOutput::Error {
+            chunk, line, raw, ..
+        } => {
+            assert_eq!(chunk.as_deref(), Some(id));
+            assert_eq!(line, Some(6), "{raw}");
         }
         other => panic!("expected a failure, got {other:?}"),
     }

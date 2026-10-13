@@ -160,26 +160,11 @@ fn body(
     frontend: &dyn Frontend,
     input: &ExecuteInput,
 ) -> Result<Result<imports::Body, Vec<ValidateError>>, PluginError> {
-    if let Some(artifact) = &input.artifact {
-        match artifact::usable(artifact) {
-            Ok(()) => {
-                let map = match &artifact.source_map {
-                    Some(json) => Some(
-                        frontend
-                            .read_map(json)
-                            .map_err(|why| PluginError::new("INTERPRETER_ERROR", why))?,
-                    ),
-                    None => None,
-                };
-                return Ok(Ok(imports::Body::Bytecode(artifact.bytes.clone(), map)));
-            }
-            Err(why) if input.source.is_empty() => {
-                return Err(PluginError::new("INTERPRETER_ERROR", why))
-            }
-            Err(_) => {}
-        }
+    match imports::Body::from_artifact(frontend, input.artifact.as_ref(), &input.source) {
+        Ok(Some(body)) => Ok(Ok(body)),
+        Ok(None) => Ok(frontend.prepare(&input.source).map(imports::Body::Source)),
+        Err(why) => Err(interpreter_error(why)),
     }
-    Ok(frontend.prepare(&input.source).map(imports::Body::Source))
 }
 
 fn run<'js>(
@@ -665,9 +650,11 @@ fn invalid(kind: ScriptErrorKind, line: Option<u32>, message: impl Into<String>)
     }
 }
 
-/// A runtime that cannot be built is the interpreter failing, not the
-/// script, so it leaves as an envelope error rather than as a script result.
-fn interpreter_error(e: rquickjs::Error) -> PluginError {
+/// A runtime that cannot be built, or a handler artifact this build cannot
+/// use with no source behind it, is the interpreter or the host failing,
+/// not the script, so it leaves as an envelope error rather than as a
+/// script result.
+fn interpreter_error(e: impl ToString) -> PluginError {
     PluginError::new("INTERPRETER_ERROR", e.to_string())
 }
 

@@ -887,10 +887,11 @@ fn a_path_or_a_url_is_still_refused_while_validating() {
         let validated = validate_with(
             &format!("import x from '{name}';\nexport default () => x;"),
             "script",
-            false,
+            true,
             false,
         );
         assert!(!validated.valid, "{name}");
+        assert!(validated.artifact.is_none(), "{name}");
         assert!(
             validated.errors[0]
                 .message
@@ -1052,15 +1053,20 @@ impl Frontend for Shifting {
 
 #[test]
 fn every_position_an_error_reports_is_the_authors() {
-    let (kind, _, line, raw) = failure_of(
-        execute(
-            &Shifting,
-            &execute_input(
-                "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
-            ),
-        )
-        .unwrap(),
+    let output = execute(
+        &Shifting,
+        &execute_input(
+            "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
+        ),
+    )
+    .unwrap();
+    // A dashboard script's chunk is the default name, which a failure
+    // leaves out rather than naming a file the author never saw.
+    assert!(
+        matches!(&output, ExecuteOutput::Error { chunk: None, .. }),
+        "{output:?}"
     );
+    let (kind, _, line, raw) = failure_of(output);
     assert_eq!(kind, ScriptErrorKind::Runtime);
     assert_eq!(line, Some(3), "{raw}");
     assert!(raw.contains("at handle (script:3:1)"), "{raw}");
@@ -1183,6 +1189,45 @@ fn an_artifact_this_build_cannot_load_falls_back_to_the_source_or_fails_by_name(
     );
 }
 
+/// JavaScript's front end reads no map, so an artifact carrying one is an
+/// artifact whose map cannot be read.
+#[test]
+fn an_artifact_whose_map_cannot_be_read_falls_back_to_the_source_or_fails() {
+    let mut artifact = prepared_artifact("export default () => 'from bytecode';", "script");
+    artifact.source_map = Some("{}".to_string());
+    let mut sent = execute_input("export default () => 'from source';");
+    sent.artifact = Some(artifact.clone());
+    assert_eq!(
+        returned(execute_script(&sent).unwrap()).0,
+        json!("from source")
+    );
+
+    sent.source = String::new();
+    let refused = execute_script(&sent).unwrap_err();
+    assert_eq!(refused.code, "INTERPRETER_ERROR");
+    assert!(
+        refused.message.contains("source map"),
+        "{}",
+        refused.message
+    );
+
+    let id = "src/lexicons/app/test/m.js";
+    let (output, _) = run_project(
+        fake().module_artifact(id, "export default 'source';", artifact.clone()),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    assert_eq!(returned(output).0, json!("source"));
+    let (output, _) = run_project(
+        fake().module_artifact(id, "", artifact),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    let (_, message, ..) = failure_of(output);
+    assert!(
+        message.contains(id) && message.contains("source map"),
+        "{message}"
+    );
+}
+
 #[test]
 fn an_artifact_compiled_under_another_name_is_refused() {
     let artifact = prepared_artifact("export default () => 1;", "src/a.js");
@@ -1214,10 +1259,11 @@ fn a_script_with_top_level_await_runs_from_its_artifact() {
 }
 
 /// QuickJS does not verify bytecode, so bytes reach its reader only from an
-/// artifact stamped by this build. Source text is compiled as source however
-/// much it looks like bytecode.
+/// artifact stamped by this build. Source text whose characters are this
+/// build's bytecode is compiled as source, and fails as source does, rather
+/// than being read.
 #[test]
-fn source_that_looks_like_bytecode_is_compiled_as_source() {
+fn source_text_carrying_bytecode_is_compiled_never_read() {
     let artifact = prepared_artifact("export default () => 'from bytecode';", "script");
     let source: String = artifact.bytes.iter().map(|&byte| byte as char).collect();
     let (kind, message, ..) = failure_of(execute_script(&execute_input(&source)).unwrap());
