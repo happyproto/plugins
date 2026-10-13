@@ -238,4 +238,47 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(s, "mine:x");
     }
+
+    /// PUC Lua does not verify bytecode, so no route a script can reach may
+    /// turn bytes back into a function: the only bytecode a VM runs is an
+    /// artifact the host supplied.
+    #[test]
+    fn a_script_has_no_way_to_load_bytecode() {
+        let lua = sandbox();
+        for expression in [
+            "load",
+            "loadstring",
+            "dofile",
+            "loadfile",
+            "package",
+            "require",
+            "debug",
+        ] {
+            let value: mlua::Value = lua
+                .load(format!("return {expression}"))
+                .eval()
+                .unwrap_or_else(|e| panic!("{expression}: {e}"));
+            assert!(value.is_nil(), "{expression} is reachable");
+        }
+        // `string.dump` still produces bytes; there is nothing to hand them to.
+        let dumped: mlua::LuaString = lua
+            .load("return string.dump(function() return 1 end)")
+            .eval()
+            .unwrap();
+        assert!(dumped.as_bytes().starts_with(b"\x1bLua"));
+    }
+
+    #[test]
+    fn a_dumped_function_handed_back_as_source_does_not_load() {
+        let lua = sandbox();
+        let dumped: mlua::LuaString = lua
+            .load("return string.dump(function() return 1 end)")
+            .eval()
+            .unwrap();
+        let source = String::from_utf8_lossy(&dumped.as_bytes()[..]).into_owned();
+        let error = crate::chunk::load_source(&lua, "script", &source)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("attempt to load a binary chunk"), "{error}");
+    }
 }
