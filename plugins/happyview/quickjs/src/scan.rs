@@ -101,11 +101,18 @@ fn from_clause(toks: &[Tok], start: usize) -> Option<(&Option<String>, Position)
     None
 }
 
-fn regex_may_start(previous: Option<&Tok>) -> bool {
-    match previous {
+fn regex_may_start(before: &[Tok]) -> bool {
+    match before.last() {
         None => true,
         Some(Tok::Value | Tok::Str(..)) => false,
         Some(Tok::Punct(b')' | b']')) => false,
+        // A postfix `++` or `--`: an operand has just ended. A prefix one is
+        // followed by its operand, never by a `/`.
+        Some(Tok::Punct(op @ (b'+' | b'-')))
+            if before.len() >= 2 && before[before.len() - 2] == Tok::Punct(*op) =>
+        {
+            false
+        }
         // `}` included: a block's end, where a statement may begin.
         Some(Tok::Punct(_)) => true,
         Some(Tok::Ident(word)) => BEFORE_EXPRESSION.contains(&word.as_str()),
@@ -173,7 +180,7 @@ fn tokens(code: &str) -> Vec<Tok> {
                 c.bump();
                 c.bump();
             }
-            b'/' if regex_may_start(out.last()) => {
+            b'/' if regex_may_start(&out) => {
                 skip_regex(&mut c);
                 out.push(Tok::Value);
             }
@@ -405,6 +412,27 @@ import kept from "./kept.js";
                 ("./after-return.js".into(), 4),
             ]
         );
+    }
+
+    #[test]
+    fn a_slash_after_an_increment_or_a_decrement_divides() {
+        let code = "let i = 4; i++ / 2; import \"./after-increment.js\";\n\
+                    i-- / 2; import \"./after-decrement.js\";\n";
+        assert_eq!(
+            found(code),
+            vec![
+                ("./after-increment.js".into(), 1),
+                ("./after-decrement.js".into(), 2),
+            ]
+        );
+    }
+
+    /// Read as a regex, the `/` after `i++` would end inside the first
+    /// string, and the string's text would be scanned as code.
+    #[test]
+    fn a_division_after_an_increment_reports_no_phantom_import() {
+        let code = "let i = 0, s; i++ / 2 + \"/\"; s = \"import('./x.js')\";\n";
+        assert_eq!(found(code), vec![]);
     }
 
     #[test]
