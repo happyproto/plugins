@@ -6,7 +6,7 @@ use happyview_quickjs::conformance::Corpus;
 
 use crate::frontend::TypeScript;
 
-fn corpus() -> Corpus<'static> {
+fn corpus() -> Corpus {
     Corpus {
         frontend: &TypeScript,
         dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus"),
