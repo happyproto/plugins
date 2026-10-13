@@ -867,6 +867,21 @@ fn a_module_validates_without_a_default_export() {
 }
 
 #[test]
+fn the_libc_bytecode_module_is_not_importable() {
+    for source in [
+        "import * as bjson from 'qjs:bjson';\nexport default () => 1;",
+        "export default async () => (await import('qjs:bjson')).read;",
+    ] {
+        let (kind, message, ..) = failure_of(run_bounded(execute_input(source)));
+        assert_eq!(kind, ScriptErrorKind::Runtime, "{source}");
+        assert!(
+            message.starts_with("cannot import 'qjs:bjson'"),
+            "{source}: {message}"
+        );
+    }
+}
+
+#[test]
 fn a_path_or_a_url_is_still_refused_while_validating() {
     for name in ["/etc/passwd", "https://example.com/x.js", ".hidden"] {
         let validated = validate_with(
