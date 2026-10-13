@@ -45,12 +45,12 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     env:
       DIR: plugins/happyview/${{ inputs.plugin }}
       TAG: happyview-${{ inputs.plugin }}-v${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download the release's module and manifest
         id: module
