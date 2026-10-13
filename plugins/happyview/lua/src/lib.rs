@@ -2,6 +2,7 @@
 //! through `mlua`, compiled to `wasm32-wasip1`, behind the SDK's `execute`
 //! and `validate` exports.
 
+mod artifact;
 mod budget;
 mod builtins;
 mod chunk;
@@ -13,8 +14,8 @@ mod require;
 mod sandbox;
 
 use happyview_plugin_sdk::{
-    interpreter_plugin, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError, PluginInfo,
-    ScriptErrorKind, ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
+    interpreter_plugin, ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError,
+    PluginInfo, ScriptErrorKind, ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
 };
 
 const MISSING_HANDLE: &str = "script must define a handle() function";
@@ -41,9 +42,14 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     require::install(&lua, &input.libraries).map_err(interpreter_error)?;
 
     let known = [input.chunk_name.clone()];
-    if let Err(e) = chunk::load_source(&lua, &input.chunk_name, &input.source)
-        .and_then(|main| main.call::<()>(()))
-    {
+    let main = chunk::load(
+        &lua,
+        &input.chunk_name,
+        &input.source,
+        input.artifact.as_ref(),
+    )
+    .map_err(|why| PluginError::new("INTERPRETER_ERROR", why))?;
+    if let Err(e) = main.and_then(|main| main.call::<()>(())) {
         return Ok(script_failure(load_failure_kind(&e), &e, &budget, &known));
     }
     let Ok(handle) = lua.globals().get::<mlua::Function>("handle") else {
@@ -105,34 +111,40 @@ fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError>
     require::install_stub(&lua).map_err(interpreter_error)?;
     let budget = budget::install(&lua, &VALIDATE_LIMITS).map_err(interpreter_error)?;
     let name = input.chunk_name.as_deref().unwrap_or(chunk::DEFAULT);
-    if let Err(e) =
-        chunk::load_source(&lua, name, &input.source).and_then(|main| main.call::<()>(()))
-    {
+    let refused = |e: mlua::Error| {
         let kind = if budget.is_spent() {
             ScriptErrorKind::Timeout
         } else {
             load_failure_kind(&e)
         };
-        let raw = e.to_string();
-        let located = chunk::locate(&raw, &[name.to_string()]);
-        return Ok(ValidateOutput {
-            valid: false,
-            errors: vec![ValidateError {
-                kind,
-                line: located.line,
-                message: located.message,
-            }],
-            ..ValidateOutput::default()
-        });
+        let located = chunk::locate(&e.to_string(), &[name.to_string()]);
+        ValidateOutput::invalid(vec![ValidateError {
+            kind,
+            line: located.line,
+            message: located.message,
+        }])
+    };
+
+    let main = match chunk::load_source(&lua, name, &input.source) {
+        Ok(main) => main,
+        Err(e) => return Ok(refused(e)),
+    };
+    // Dumped before file scope runs, so the artifact is the compiled chunk
+    // and holds nothing file scope did with the stub `require`.
+    let artifact = input.prepare.then(|| artifact::prepare(&main));
+    if let Err(e) = main.call::<()>(()) {
+        return Ok(refused(e));
     }
-    match lua.globals().get::<mlua::Function>("handle") {
-        Ok(_) => Ok(ValidateOutput {
-            valid: true,
-            errors: Vec::new(),
-            ..ValidateOutput::default()
-        }),
-        Err(_) => Ok(invalid(ScriptErrorKind::MissingHandle, MISSING_HANDLE)),
+    // A module is required and a test is run, neither called, so only a
+    // handler has a `handle` to define.
+    if input.role == ChunkRole::Handler && lua.globals().get::<mlua::Function>("handle").is_err() {
+        return Ok(invalid(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
     }
+    Ok(ValidateOutput {
+        valid: true,
+        artifact,
+        ..ValidateOutput::default()
+    })
 }
 
 /// The host branches three ways on what a script returned, and a JSON `null`
@@ -242,6 +254,174 @@ mod tests {
             "removed_globals": removed_globals,
         }))
         .expect("the validate input should deserialize")
+    }
+
+    fn prepared(source: &str, chunk_name: &str) -> happyview_plugin_sdk::PreparedArtifact {
+        let mut input = validate_input(source, &[]);
+        input.chunk_name = Some(chunk_name.to_string());
+        input.prepare = true;
+        let validated = validate_source(&input).unwrap();
+        assert!(validated.valid, "{:?}", validated.errors);
+        validated
+            .artifact
+            .expect("a prepared, valid script carries its artifact")
+    }
+
+    #[test]
+    fn validate_prepares_only_when_asked_and_only_what_is_valid() {
+        assert!(
+            validate_source(&validate_input("function handle() end", &[]))
+                .unwrap()
+                .artifact
+                .is_none()
+        );
+        let mut refused = validate_input("function handle(", &[]);
+        refused.prepare = true;
+        let refused = validate_source(&refused).unwrap();
+        assert!(!refused.valid);
+        assert!(refused.artifact.is_none());
+        assert_eq!(
+            prepared("function handle() end", "script").engine,
+            artifact::ENGINE
+        );
+    }
+
+    #[test]
+    fn a_run_from_the_artifact_needs_no_source_and_keeps_its_lines() {
+        let artifact = prepared(
+            "function handle(input)\n  if input.fail then\n    error('boom')\n  end\n  return { ok = true }\nend",
+            "src/jobs/x.lua",
+        );
+        let mut input = execute_input("");
+        input.chunk_name = "src/jobs/x.lua".to_string();
+        input.artifact = Some(artifact.clone());
+        assert_eq!(
+            execute_script(&input).unwrap(),
+            ExecuteOutput::Returned {
+                value: json!({ "ok": true }),
+                value_kind: ScriptValueKind::Object,
+            }
+        );
+
+        input.input = json!({ "fail": true });
+        match execute_script(&input).unwrap() {
+            ExecuteOutput::Error {
+                chunk,
+                line,
+                message,
+                ..
+            } => {
+                assert_eq!(chunk.as_deref(), Some("src/jobs/x.lua"));
+                assert_eq!(line, Some(3));
+                assert_eq!(message, "boom");
+            }
+            other => panic!("expected a failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_module_validates_without_a_handle() {
+        let mut input = validate_input("local M = {}\nfunction M.f() return 1 end\nreturn M", &[]);
+        assert_eq!(
+            validate_source(&input).unwrap().errors[0].kind,
+            ScriptErrorKind::MissingHandle
+        );
+        input.role = ChunkRole::Module;
+        input.prepare = true;
+        input.chunk_name = Some("src/lib/m.lua".to_string());
+        let validated = validate_source(&input).unwrap();
+        assert!(validated.valid, "{:?}", validated.errors);
+        assert!(validated.artifact.is_some());
+    }
+
+    #[test]
+    fn an_artifact_this_build_cannot_load_falls_back_to_the_source_or_fails_by_name() {
+        let mut artifact = prepared("function handle() return 'from bytecode' end", "script");
+        artifact.engine = "puc-lua-5.1.5".to_string();
+
+        let mut input = execute_input("function handle() return 'from source' end");
+        input.artifact = Some(artifact.clone());
+        assert_eq!(
+            execute_script(&input).unwrap(),
+            ExecuteOutput::Returned {
+                value: json!("from source"),
+                value_kind: ScriptValueKind::Other,
+            }
+        );
+
+        input.source = String::new();
+        let refused = execute_script(&input).unwrap_err();
+        assert_eq!(refused.code, "INTERPRETER_ERROR");
+        assert!(
+            refused.message.contains("puc-lua-5.1.5"),
+            "{}",
+            refused.message
+        );
+    }
+
+    /// A dump keeps the name it was compiled under whatever it is loaded as,
+    /// so an artifact for another file would report its errors, and its
+    /// `require` referrer, as that file.
+    #[test]
+    fn an_artifact_prepared_for_another_chunk_is_not_run_as_this_one() {
+        let artifact = prepared("function handle() return 'from a' end", "src/a.lua");
+
+        let mut input = execute_input("function handle() return 'from b' end");
+        input.chunk_name = "src/b.lua".to_string();
+        input.artifact = Some(artifact.clone());
+        assert_eq!(
+            execute_script(&input).unwrap(),
+            ExecuteOutput::Returned {
+                value: json!("from b"),
+                value_kind: ScriptValueKind::Other,
+            }
+        );
+
+        input.source = String::new();
+        let refused = execute_script(&input).unwrap_err();
+        assert_eq!(refused.code, "INTERPRETER_ERROR");
+        assert!(
+            refused.message.contains("src/a.lua") && refused.message.contains("src/b.lua"),
+            "{}",
+            refused.message
+        );
+
+        // The same artifact under its own name runs from the bytecode.
+        input.chunk_name = "src/a.lua".to_string();
+        assert_eq!(
+            execute_script(&input).unwrap(),
+            ExecuteOutput::Returned {
+                value: json!("from a"),
+                value_kind: ScriptValueKind::Other,
+            }
+        );
+    }
+
+    /// Bytes carrying this build's stamp that are not a dump are the host's
+    /// artifact being damaged, and are refused before they can run.
+    #[test]
+    fn a_damaged_artifact_falls_back_to_the_source_or_fails() {
+        let mut artifact = prepared("function handle() return 'from bytecode' end", "script");
+        artifact.bytes.truncate(artifact.bytes.len() / 2);
+
+        let mut input = execute_input("function handle() return 'from source' end");
+        input.artifact = Some(artifact);
+        assert_eq!(
+            execute_script(&input).unwrap(),
+            ExecuteOutput::Returned {
+                value: json!("from source"),
+                value_kind: ScriptValueKind::Other,
+            }
+        );
+
+        input.source = String::new();
+        let refused = execute_script(&input).unwrap_err();
+        assert_eq!(refused.code, "INTERPRETER_ERROR");
+        assert!(
+            refused.message.contains("did not load"),
+            "{}",
+            refused.message
+        );
     }
 
     fn message_of(output: ExecuteOutput) -> String {
