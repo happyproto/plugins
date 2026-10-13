@@ -81,37 +81,24 @@ impl Chunks {
     }
 
     /// A `name:L:C` frame location at the start of `text` in a project
-    /// module, its position, and how many bytes it takes. The longest name
-    /// that fits wins, so `lib/a.js` is not read as `a.js`.
+    /// module, its position, and how many bytes it takes. The location
+    /// starts exactly at the name, so `lib/a.js:3:1` is never read as
+    /// `a.js`.
     fn frame_at(&self, text: &str) -> Option<(&str, Position, usize)> {
-        let mut best: Option<(&str, Position, usize)> = None;
-        for name in self.maps.keys() {
-            let Some(rest) = text
-                .strip_prefix(name.as_str())
-                .and_then(|rest| rest.strip_prefix(':'))
-            else {
-                continue;
-            };
+        self.maps.keys().find_map(|name| {
+            let rest = text.strip_prefix(name.as_str())?.strip_prefix(':')?;
             let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
             let line_len = digits(rest);
-            let Some(after_line) = rest[line_len..].strip_prefix(':') else {
-                continue;
-            };
+            let after_line = rest[line_len..].strip_prefix(':')?;
             let column_len = digits(after_line);
             if line_len == 0 || column_len == 0 {
-                continue;
+                return None;
             }
-            let (Ok(line), Ok(column)) =
-                (rest[..line_len].parse(), after_line[..column_len].parse())
-            else {
-                continue;
-            };
-            if best.is_none_or(|(current, ..)| name.len() > current.len()) {
-                let len = name.len() + 1 + line_len + 1 + column_len;
-                best = Some((name.as_str(), Position { line, column }, len));
-            }
-        }
-        best
+            let line = rest[..line_len].parse().ok()?;
+            let column = after_line[..column_len].parse().ok()?;
+            let len = name.len() + 1 + line_len + 1 + column_len;
+            Some((name.as_str(), Position { line, column }, len))
+        })
     }
 
     /// `stack` with every frame in a project module moved to its author's
@@ -229,14 +216,10 @@ mod tests {
     }
 
     #[test]
-    fn a_longer_name_wins_over_a_shorter_one_it_ends_with() {
+    fn a_name_matches_only_where_the_frame_location_starts() {
         let mut chunks = Chunks::default();
         chunks.insert("a.js", None);
-        chunks.insert("lib/a.js", None);
-        assert_eq!(
-            chunks.line_of("    at f (lib/a.js:3:1)"),
-            Some(("lib/a.js".to_string(), 3))
-        );
+        assert_eq!(chunks.line_of("    at f (lib/a.js:3:1)"), None);
         assert_eq!(
             chunks.line_of("    at a.js:2:1"),
             Some(("a.js".to_string(), 2))
