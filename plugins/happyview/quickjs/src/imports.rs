@@ -24,12 +24,36 @@ use crate::bridge;
 use crate::builtins::{self, throw_error};
 use crate::calls::{library_error, Calls};
 
-/// A path or a URL names a file this plugin has no way to read, and a bare
-/// name that happens to look like one would resolve differently on every
-/// host. Everything a script imports is a name the instance already knows.
-pub struct Names;
+/// Whether `name` names a file beside the importer rather than a built-in
+/// or a library.
+pub fn is_relative(name: &str) -> bool {
+    name.starts_with("./") || name.starts_with("../")
+}
 
-impl Resolver for Names {
+fn refusal(name: &str) -> String {
+    format!(
+        "cannot import '{name}': a script imports built-in modules and installed libraries \
+         by name, and its project's own modules by a path starting with ./ or ../, never \
+         an absolute path or a URL"
+    )
+}
+
+/// How a specifier becomes the name QuickJS loads and caches a module by.
+pub struct Specifiers {
+    validating: bool,
+}
+
+impl Specifiers {
+    pub fn validating() -> Self {
+        Self { validating: true }
+    }
+
+    pub fn running() -> Self {
+        Self { validating: false }
+    }
+}
+
+impl Resolver for Specifiers {
     fn resolve<'js>(
         &mut self,
         ctx: &Ctx<'js>,
@@ -37,14 +61,15 @@ impl Resolver for Names {
         name: &str,
         _attributes: Option<ImportAttributes<'js>>,
     ) -> Result<String> {
-        if name.starts_with('.') || name.starts_with('/') || name.contains(':') {
-            return Err(throw_error(
-                ctx,
-                &format!(
-                    "cannot import '{name}': a script imports built-in modules and installed \
-                     libraries by name, never a path or a URL"
-                ),
-            ));
+        let relative = is_relative(name);
+        if (name.starts_with('.') && !relative) || name.starts_with('/') || name.contains(':') {
+            return Err(throw_error(ctx, &refusal(name)));
+        }
+        // Validation stubs every import, a relative one included: whether
+        // the file exists is the host's question, asked of the imports
+        // `validate` reports.
+        if relative && !self.validating {
+            return Err(throw_error(ctx, &refusal(name)));
         }
         Ok(name.to_string())
     }
