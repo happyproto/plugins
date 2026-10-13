@@ -5,6 +5,7 @@
 //! keeps the bare name `script`, rendered `[string "script"]:12:`, which is
 //! what every stored event log and the host's differential comparison read.
 
+use happyview_plugin_sdk::PreparedArtifact;
 use mlua::chunk::ChunkMode;
 use mlua::{Function, Lua, Result as LuaResult};
 
@@ -26,6 +27,53 @@ pub fn load_source(lua: &Lua, name: &str, source: &str) -> LuaResult<Function> {
         .set_mode(ChunkMode::Text)
         .set_name(lua_name(name))
         .into_function()
+}
+
+/// The chunk a run executes: the host's bytecode when this build wrote it,
+/// the source otherwise. The outer `Err` is an artifact this build cannot
+/// load with no source to fall back to, which is the host's to fix rather
+/// than the script's.
+pub fn load(
+    lua: &Lua,
+    name: &str,
+    source: &str,
+    artifact: Option<&PreparedArtifact>,
+) -> Result<LuaResult<Function>, String> {
+    if let Some(artifact) = artifact {
+        match load_artifact(lua, name, artifact) {
+            Ok(main) => return Ok(Ok(main)),
+            Err(why) if source.is_empty() => return Err(why),
+            Err(_) => {}
+        }
+    }
+    Ok(load_source(lua, name, source))
+}
+
+/// `artifact` as a function, when it is bytecode this build wrote for chunk
+/// `name`. PUC Lua does not verify bytecode, so the stamp is checked before
+/// a byte of it reaches `lua_load`.
+///
+/// A dump carries the name it was compiled under and ignores the one it is
+/// loaded with, so an artifact prepared for another chunk would report its
+/// positions, and send its referrer, as that chunk. A dump that will not
+/// load is the host's artifact being damaged rather than the script being
+/// wrong, so it is refused the same way.
+fn load_artifact(lua: &Lua, name: &str, artifact: &PreparedArtifact) -> Result<Function, String> {
+    crate::artifact::usable(artifact)?;
+    let main = lua
+        .load(artifact.bytes.as_slice())
+        .set_mode(ChunkMode::Binary)
+        .into_function()
+        .map_err(|e| format!("the prepared artifact for {name} did not load: {e}"))?;
+    let expected = lua_name(name);
+    let embedded = main.info().source.unwrap_or_default();
+    if embedded != expected {
+        let embedded = embedded.strip_prefix('@').unwrap_or(&embedded);
+        return Err(format!(
+            "the prepared artifact was compiled as {embedded}, and this run is {name}"
+        ));
+    }
+    Ok(main)
 }
 
 /// Where an error was raised, and what it said once the position is off.
