@@ -14,10 +14,6 @@ use rquickjs::{Context, Ctx, Result, Runtime};
 use crate::backend::Backend;
 use crate::builtins;
 
-/// The name the script's module is compiled under. QuickJS writes a frame in
-/// it as `script:12:5`, which is what an error's `line` is read out of.
-pub const MODULE_NAME: &str = "script";
-
 /// Closes the four routes from a string to code: `eval`, and the
 /// constructors of the four function kinds, which are reachable from any
 /// function of that kind as `.constructor` and not only as globals. Each

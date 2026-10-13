@@ -983,3 +983,28 @@ fn every_position_an_error_reports_is_the_authors() {
     .unwrap();
     assert_eq!(validated.errors[0].line, Some(2), "{:?}", validated.errors);
 }
+
+#[test]
+fn an_error_names_the_file_it_is_in() {
+    let mut input = execute_input(
+        "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
+    );
+    input.chunk_name = "src/lexicons/app/test/q.js".to_string();
+    match run_bounded(input) {
+        ExecuteOutput::Error {
+            chunk, line, raw, ..
+        } => {
+            assert_eq!(
+                chunk.as_deref(),
+                Some("src/lexicons/app/test/q.js"),
+                "{raw}"
+            );
+            assert_eq!(line, Some(3), "{raw}");
+            assert!(
+                raw.contains("at handle (src/lexicons/app/test/q.js:3:"),
+                "{raw}"
+            );
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
