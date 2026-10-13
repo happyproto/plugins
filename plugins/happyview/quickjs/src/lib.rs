@@ -37,7 +37,7 @@ pub use backend::fake;
 pub use backend::Backend;
 use budget::Budget;
 use calls::{Calls, ClearOnDrop, Unsettled};
-pub use positions::{Mapping, Position, SourceMap};
+pub use positions::{Chunks, Mapping, Position, SourceMap};
 
 /// The step from what an author wrote to the JavaScript QuickJS compiles.
 /// It is the only thing a language plugin supplies: what runs afterwards,
@@ -72,6 +72,9 @@ impl Frontend for JavaScript {
 }
 
 pub const MISSING_HANDLE: &str = "script must export a default function";
+
+/// The chunk name of a script no file names: one saved in the dashboard.
+const DEFAULT_CHUNK: &str = happyview_plugin_sdk::DEFAULT_CHUNK_NAME;
 
 /// Validation carries no operator limits, so it works from a fixed pair:
 /// large enough for any file-scope work a script does while loading, small
@@ -120,9 +123,14 @@ pub fn execute_with(
     let context = sandbox::create(&runtime, backend.clone()).map_err(interpreter_error)?;
     budget::install(&runtime, &budget, &input.limits);
 
+    let chunks = RefCell::new(Chunks::default());
+    chunks
+        .borrow_mut()
+        .insert(&input.chunk_name, prepared.map.clone());
+
     context.with(|ctx| {
         let _clear = ClearOnDrop(&calls);
-        run(&ctx, &prepared, input, &backend, &calls, &budget)
+        run(&ctx, &prepared, input, &backend, &calls, &budget, &chunks)
     })
 }
 
@@ -133,26 +141,40 @@ fn run<'js>(
     backend: &Rc<dyn Backend>,
     calls: &Calls,
     budget: &Budget,
+    chunks: &RefCell<Chunks>,
 ) -> Result<ExecuteOutput, PluginError> {
-    let map = prepared.map.as_ref();
-    let module = match Module::declare(ctx.clone(), sandbox::MODULE_NAME, prepared.code.as_str()) {
+    let module = match Module::declare(
+        ctx.clone(),
+        input.chunk_name.as_str(),
+        prepared.code.as_str(),
+    ) {
         Ok(module) => module,
-        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Syntax, e, budget, map)),
+        Err(e) => {
+            return Ok(script_failure(
+                ctx,
+                ScriptErrorKind::Syntax,
+                e,
+                budget,
+                &chunks.borrow(),
+            ))
+        }
     };
     // File scope, top-level `await` included, settles through the same loop
     // a handler's promise does, before `handle` is ever called.
     let module = match module.eval() {
-        Ok((module, evaluated)) => match wait(ctx, calls, &evaluated, budget, map, "the module")? {
-            Ok(_) => module,
-            Err(failure) => return Ok(failure),
-        },
+        Ok((module, evaluated)) => {
+            match wait(ctx, calls, &evaluated, budget, chunks, "the module")? {
+                Ok(_) => module,
+                Err(failure) => return Ok(failure),
+            }
+        }
         Err(e) => {
             return Ok(script_failure(
                 ctx,
                 ScriptErrorKind::Runtime,
                 e,
                 budget,
-                map,
+                &chunks.borrow(),
             ))
         }
     };
@@ -164,7 +186,7 @@ fn run<'js>(
                 ScriptErrorKind::Runtime,
                 e,
                 budget,
-                map,
+                &chunks.borrow(),
             ))
         }
     };
@@ -184,12 +206,12 @@ fn run<'js>(
                 ScriptErrorKind::Runtime,
                 e,
                 budget,
-                map,
+                &chunks.borrow(),
             ))
         }
     };
     let returned = match returned.clone().into_promise() {
-        Some(promise) => match wait(ctx, calls, &promise, budget, map, "handle's promise")? {
+        Some(promise) => match wait(ctx, calls, &promise, budget, chunks, "handle's promise")? {
             Ok(value) => value,
             Err(failure) => return Ok(failure),
         },
@@ -211,7 +233,7 @@ fn run<'js>(
             ScriptErrorKind::Runtime,
             e,
             budget,
-            map,
+            &chunks.borrow(),
         )),
     }
 }
@@ -223,7 +245,7 @@ fn wait<'js>(
     calls: &Calls,
     promise: &Promise<'js>,
     budget: &Budget,
-    map: Option<&SourceMap>,
+    chunks: &RefCell<Chunks>,
     what: &str,
 ) -> Result<Result<Value<'js>, ExecuteOutput>, PluginError> {
     match calls.run(ctx, promise, budget) {
@@ -233,7 +255,7 @@ fn wait<'js>(
             ScriptErrorKind::Runtime,
             e,
             budget,
-            map,
+            &chunks.borrow(),
         ))),
         Err(Unsettled::Spent) => Ok(Err(failure(ScriptErrorKind::Timeout, budget::SPENT))),
         Err(Unsettled::Stuck) => Ok(Err(failure(ScriptErrorKind::Runtime, never_settled(what)))),
@@ -265,9 +287,10 @@ pub fn validate(
             })
         }
     };
+    let name = input.chunk_name.as_deref().unwrap_or(DEFAULT_CHUNK);
     let wanted: Wanted = Rc::new(RefCell::new(BTreeMap::new()));
     for _ in 0..=MAX_STUBBED_IMPORTS {
-        match validate_once(&prepared, &wanted)? {
+        match validate_once(&prepared, name, &wanted)? {
             Attempt::Done(output) => return Ok(output),
             Attempt::Wants(module, export) => {
                 // A name already stubbed and still missing is not one more
@@ -303,7 +326,7 @@ enum Attempt {
 /// Compile and evaluate file scope with every import a stub, then check for
 /// a default export that is a function. Evaluating under a budget is the
 /// point: a loop at file scope fails rather than hanging the editor.
-fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, PluginError> {
+fn validate_once(prepared: &Prepared, name: &str, wanted: &Wanted) -> Result<Attempt, PluginError> {
     let (runtime, budget) = budget::runtime().map_err(interpreter_error)?;
     let backend: Rc<dyn Backend> = Rc::new(backend::Validating);
     let calls = Calls::new(backend.clone());
@@ -315,11 +338,13 @@ fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, Plugin
     );
     let context = sandbox::create(&runtime, backend).map_err(interpreter_error)?;
     budget::install(&runtime, &budget, &VALIDATE_LIMITS);
+    let mut chunks = Chunks::default();
+    chunks.insert(name, prepared.map.clone());
 
     context.with(|ctx| {
         let _clear = ClearOnDrop(&calls);
         let refused = |kind, e| -> Attempt {
-            let thrown = describe(&ctx, e, prepared.map.as_ref());
+            let thrown = describe(&ctx, e, &chunks);
             if let Some((module, export)) = imports::missing_export(&thrown.text) {
                 return Attempt::Wants(module, export);
             }
@@ -332,11 +357,10 @@ fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, Plugin
         };
         let done = |kind, message: &str| Attempt::Done(invalid(kind, None, message));
 
-        let module =
-            match Module::declare(ctx.clone(), sandbox::MODULE_NAME, prepared.code.as_str()) {
-                Ok(module) => module,
-                Err(e) => return Ok(refused(ScriptErrorKind::Syntax, e)),
-            };
+        let module = match Module::declare(ctx.clone(), name, prepared.code.as_str()) {
+            Ok(module) => module,
+            Err(e) => return Ok(refused(ScriptErrorKind::Syntax, e)),
+        };
         let module = match module.eval() {
             Ok((module, evaluated)) => match calls.run(&ctx, &evaluated, &budget) {
                 Ok(_) => module,
@@ -419,9 +443,9 @@ fn script_failure(
     default: ScriptErrorKind,
     error: rquickjs::Error,
     budget: &Budget,
-    map: Option<&SourceMap>,
+    chunks: &Chunks,
 ) -> ExecuteOutput {
-    let thrown = describe(ctx, error, map);
+    let thrown = describe(ctx, error, chunks);
     let default = compile_kind(default, &thrown);
     let (kind, message) = if budget.is_spent() {
         (ScriptErrorKind::Timeout, budget::SPENT.to_string())
@@ -435,7 +459,7 @@ fn script_failure(
         message,
         line: thrown.line,
         raw: thrown.raw,
-        chunk: None,
+        chunk: thrown.chunk,
     }
 }
 
@@ -461,6 +485,8 @@ struct Thrown {
     /// unless that is plain `Error`, so `throw new Error("boom")` reads as
     /// `boom` and a `TypeError` says that it is one.
     message: String,
+    /// The project module `line` is in, unless that is the dashboard's script.
+    chunk: Option<String>,
     line: Option<u32>,
     /// The name, message and stack whole, for the event log.
     raw: String,
@@ -479,6 +505,7 @@ impl Thrown {
             message: text.clone(),
             raw: text.clone(),
             text,
+            chunk: None,
             line: None,
             memory,
             syntax: false,
@@ -486,17 +513,17 @@ impl Thrown {
     }
 }
 
-/// What was thrown, with every position in it the author's: `map` is the
-/// front end's, and `None` when it moved nothing.
-fn describe(ctx: &Ctx<'_>, error: rquickjs::Error, map: Option<&SourceMap>) -> Thrown {
+/// What was thrown, with every position in it the author's: `chunks` holds
+/// each project module's map, and none for a module that moved nothing.
+fn describe(ctx: &Ctx<'_>, error: rquickjs::Error, chunks: &Chunks) -> Thrown {
     match error {
-        rquickjs::Error::Exception => describe_value(ctx, ctx.catch(), map),
+        rquickjs::Error::Exception => describe_value(ctx, ctx.catch(), chunks),
         rquickjs::Error::Allocation => Thrown::plain(budget::OUT_OF_MEMORY.to_string(), true),
         other => Thrown::plain(other.to_string(), false),
     }
 }
 
-fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap>) -> Thrown {
+fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, chunks: &Chunks) -> Thrown {
     let read = |name: &str| -> Option<String> {
         let object = value.as_object()?;
         match object.get::<_, Option<Coerced<String>>>(name) {
@@ -513,7 +540,8 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap
     if value.is_error() {
         let name = read("name").unwrap_or_else(|| "Error".to_string());
         let text = read("message").unwrap_or_default();
-        let stack = positions::remap_frames(&read("stack").unwrap_or_default(), map);
+        let stack = chunks.remap_frames(&read("stack").unwrap_or_default());
+        let place = chunks.line_of(&stack);
         let message = if name == "Error" {
             text.clone()
         } else {
@@ -526,7 +554,12 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap
         }
         return Thrown {
             syntax: name == "SyntaxError",
-            line: positions::line_of(&stack, None),
+            // The dashboard's chunk names no file anyone could open.
+            chunk: place
+                .as_ref()
+                .map(|(chunk, _)| chunk.clone())
+                .filter(|chunk| chunk != DEFAULT_CHUNK),
+            line: place.map(|(_, line)| line),
             memory: name == "InternalError" && text == budget::OUT_OF_MEMORY,
             text,
             message,
