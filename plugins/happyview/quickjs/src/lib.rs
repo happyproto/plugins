@@ -21,13 +21,14 @@ mod ctx;
 mod imports;
 mod positions;
 mod sandbox;
+mod scan;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use happyview_plugin_sdk::{
-    ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError, ScriptErrorKind,
+    ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, ImportRef, PluginError, ScriptErrorKind,
     ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
 };
 use rquickjs::module::WriteOptions;
@@ -410,6 +411,7 @@ fn validate_once(
                 artifact: bytes
                     .clone()
                     .map(|bytes| artifact::prepared(bytes, prepared.source_map.clone())),
+                imports: literal_imports(prepared),
                 ..ValidateOutput::default()
             })
         };
@@ -424,6 +426,18 @@ fn validate_once(
             Err(e) => refused(ScriptErrorKind::Runtime, e),
         })
     })
+}
+
+/// The literal relative imports in what QuickJS compiles, each placed on the
+/// author's line through the front end's map.
+fn literal_imports(prepared: &Prepared) -> Vec<ImportRef> {
+    scan::relative_imports(&prepared.code)
+        .into_iter()
+        .map(|(specifier, at)| ImportRef {
+            specifier,
+            line: positions::remap(prepared.map.as_ref(), at).line,
+        })
+        .collect()
 }
 
 /// The host branches three ways on what a script returned, and a JSON `null`

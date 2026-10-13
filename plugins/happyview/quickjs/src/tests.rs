@@ -1082,3 +1082,23 @@ fn an_error_names_the_file_it_is_in() {
         other => panic!("expected a failure, got {other:?}"),
     }
 }
+
+#[test]
+fn validate_reports_the_literal_relative_imports() {
+    let validated = validate_with(
+        "import { format } from './lib/format.js';\nimport json from 'internal.json';\nexport default async () => (await import('../late.js')).x;",
+        "script",
+        false,
+        false,
+    );
+    assert!(validated.valid, "{:?}", validated.errors);
+    let found: Vec<(String, u32)> = validated
+        .imports
+        .into_iter()
+        .map(|import| (import.specifier, import.line))
+        .collect();
+    assert_eq!(
+        found,
+        vec![("./lib/format.js".into(), 1), ("../late.js".into(), 3)]
+    );
+}
