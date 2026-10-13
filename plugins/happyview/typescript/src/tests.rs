@@ -450,3 +450,39 @@ fn a_typescript_artifact_places_errors_on_typescript_lines_with_no_source() {
     assert_eq!(kind, ScriptErrorKind::Runtime);
     assert_eq!(line, Some(7), "{raw}");
 }
+
+#[test]
+fn a_typescript_module_is_transformed_and_its_errors_land_on_its_own_lines() {
+    let fake = Fake::new().extension("ts").module(
+        "src/lib/fmt.ts",
+        "enum Size {\n  Small,\n  Large,\n}\nexport function label(t: any): string {\n  return t.name + Size.Large;\n}\n",
+    );
+    let fake = Rc::new(fake);
+    let ok = happyview_quickjs::execute_with(
+        &TypeScript,
+        &input(
+            "import { label } from './lib/fmt';\nexport default (): string => label({ name: 'x' });",
+            json!({ "chunk_name": "src/handler.ts" }),
+        ),
+        fake.clone(),
+    )
+    .unwrap();
+    assert_eq!(returned(ok), json!("x1"));
+
+    let failed = happyview_quickjs::execute_with(
+        &TypeScript,
+        &input(
+            "import { label } from './lib/fmt';\nexport default (): string => label(undefined);",
+            json!({ "chunk_name": "src/handler.ts" }),
+        ),
+        fake,
+    )
+    .unwrap();
+    match failed {
+        ExecuteOutput::Error { chunk, line, .. } => {
+            assert_eq!(chunk.as_deref(), Some("src/lib/fmt.ts"));
+            assert_eq!(line, Some(6));
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}

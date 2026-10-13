@@ -112,7 +112,7 @@ const MAX_STUBBED_IMPORTS: usize = 256;
 /// Run a script against the host this module is instantiated by: what an
 /// interpreter plugin's `execute` export calls.
 pub fn execute(
-    frontend: &dyn Frontend,
+    frontend: &'static dyn Frontend,
     input: &ExecuteInput,
 ) -> Result<ExecuteOutput, PluginError> {
     execute_with(frontend, input, Rc::new(backend::Host))
@@ -120,7 +120,7 @@ pub fn execute(
 
 /// [`execute`] against `backend`, which a test chooses.
 pub fn execute_with(
-    frontend: &dyn Frontend,
+    frontend: &'static dyn Frontend,
     input: &ExecuteInput,
     backend: Rc<dyn Backend>,
 ) -> Result<ExecuteOutput, PluginError> {
@@ -130,7 +130,12 @@ pub fn execute_with(
     };
     let (runtime, budget) = budget::runtime().map_err(interpreter_error)?;
     let calls = Rc::new(Calls::new(backend.clone()));
-    let project = Rc::new(imports::Project::new(&input.chunk_name, body));
+    let project = Rc::new(imports::Project::new(
+        frontend,
+        backend.clone(),
+        &input.chunk_name,
+        body,
+    ));
     runtime.set_loader(
         imports::Specifiers::running(project.clone()),
         imports::Load {

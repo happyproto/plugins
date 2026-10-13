@@ -1,6 +1,7 @@
 //! `import`: the script itself, which a run's entry imports by its chunk
-//! name; a built-in; or an installed library plugin reached through the
-//! bridge. Namespaces are paired with plugin ids in the execute input,
+//! name; a module of the script's own project, which the host answers for a
+//! relative path; a built-in; or an installed library plugin reached through
+//! the bridge. Namespaces are paired with plugin ids in the execute input,
 //! because a script imports the first and the host imports take the second,
 //! and resolving one from the other inside the guest would move namespace
 //! resolution out of the registry that already does it.
@@ -15,7 +16,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use happyview_plugin_sdk::LibraryRef;
+use happyview_plugin_sdk::{LibraryRef, ModuleResolve, ResolvedModule};
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::module::Declared;
 use rquickjs::{Ctx, Module, Result};
@@ -24,7 +25,7 @@ use crate::backend::Backend;
 use crate::bridge;
 use crate::builtins::{self, throw_error};
 use crate::calls::{library_error, Calls};
-use crate::{Chunks, Prepared, SourceMap};
+use crate::{Chunks, Frontend, Prepared, SourceMap};
 
 /// Whether `name` names a file beside the importer rather than a built-in
 /// or a library.
@@ -76,7 +77,7 @@ impl Resolver for Specifiers {
             // `validate` reports.
             None => Ok(name.to_string()),
             Some(project) if base == ENTRY && name == project.main() => Ok(name.to_string()),
-            Some(_) if relative => Err(throw_error(ctx, &refusal(name))),
+            Some(project) if relative => project.resolve(ctx, base, name),
             Some(_) => Ok(name.to_string()),
         }
     }
@@ -100,18 +101,44 @@ pub enum Body {
     Source(Prepared),
 }
 
-/// A run's project code: the script, under its chunk name.
+/// Host error codes whose message is a sentence written for the script's
+/// author: a miss, a run with no project, and a path leaving `src/`.
+const HOST_CODES: [&str; 3] = ["NOT_FOUND", "UNSUPPORTED", "BAD_INPUT"];
+
+/// A run's project code: the script, under its chunk name, and every local
+/// module the host has answered for it, under its id.
+///
+/// QuickJS keeps one module per name for the life of a context and checks
+/// that list before it asks the loader, so naming a local module by the
+/// host's id is what de-duplicates it: two specifiers for one file, from one
+/// importer or two, load it once.
 pub struct Project {
+    frontend: &'static dyn Frontend,
+    backend: Rc<dyn Backend>,
     main: String,
     body: RefCell<Option<Body>>,
+    /// Modules the host answered and QuickJS has not loaded yet.
+    answered: RefCell<BTreeMap<String, ResolvedModule>>,
+    /// `(importer, specifier)` to id, so a pair is asked of the host once:
+    /// QuickJS resolves a dynamic `import()` again every time it runs.
+    resolved: RefCell<BTreeMap<(String, String), String>>,
     pub chunks: RefCell<Chunks>,
 }
 
 impl Project {
-    pub fn new(main: &str, body: Body) -> Self {
+    pub fn new(
+        frontend: &'static dyn Frontend,
+        backend: Rc<dyn Backend>,
+        main: &str,
+        body: Body,
+    ) -> Self {
         Self {
+            frontend,
+            backend,
             main: main.to_string(),
             body: RefCell::new(Some(body)),
+            answered: RefCell::new(BTreeMap::new()),
+            resolved: RefCell::new(BTreeMap::new()),
             chunks: RefCell::new(Chunks::default()),
         }
     }
@@ -120,14 +147,100 @@ impl Project {
         &self.main
     }
 
+    /// A relative specifier's module id, from the host. `base` is the
+    /// importing module's name, which is its id, so the host resolves the
+    /// specifier against the importer's own directory. A miss carries the
+    /// host's own sentence, which already names the specifier, the importer
+    /// and any same-named file in another language.
+    pub fn resolve<'js>(&self, ctx: &Ctx<'js>, base: &str, name: &str) -> Result<String> {
+        let key = (base.to_string(), name.to_string());
+        if let Some(id) = self.resolved.borrow().get(&key) {
+            return Ok(id.clone());
+        }
+        let request = ModuleResolve {
+            specifier: name.to_string(),
+            referrer: base.to_string(),
+        };
+        let module = match self.backend.module_resolve(&request) {
+            Ok(module) => module,
+            Err(error) if HOST_CODES.contains(&error.code.as_str()) => {
+                return Err(throw_error(ctx, &error.message))
+            }
+            Err(error) => {
+                return Err(throw_error(
+                    ctx,
+                    &format!(
+                        "cannot resolve '{name}': {} - {}",
+                        error.code, error.message
+                    ),
+                ))
+            }
+        };
+        let id = module.id.clone();
+        if !self.chunks.borrow().contains(&id) && id != self.main {
+            self.answered.borrow_mut().insert(id.clone(), module);
+        }
+        self.resolved.borrow_mut().insert(key, id.clone());
+        Ok(id)
+    }
+
     /// `name`'s module when it is project code; `None` sends the loader on
     /// to the built-ins and the libraries.
     pub fn load<'js>(&self, ctx: &Ctx<'js>, name: &str) -> Option<Result<Module<'js, Declared>>> {
-        if name != self.main {
-            return None;
+        if name == self.main {
+            let body = self.body.borrow_mut().take()?;
+            return Some(self.declare(ctx, name, body));
         }
-        let body = self.body.borrow_mut().take()?;
-        Some(self.declare(ctx, name, body))
+        let module = self.answered.borrow().get(name).cloned()?;
+        let declared = self
+            .body_of(ctx, &module)
+            .and_then(|body| self.declare(ctx, name, body));
+        // A module that failed to compile stays answered, so a script that
+        // catches the failure and imports it again hears the same failure.
+        if declared.is_ok() {
+            self.answered.borrow_mut().remove(name);
+        }
+        Some(declared)
+    }
+
+    /// A local module as the loader declares it: its bytecode when this
+    /// build wrote it, its source through the front end otherwise.
+    fn body_of<'js>(&self, ctx: &Ctx<'js>, module: &ResolvedModule) -> Result<Body> {
+        if let Some(artifact) = &module.artifact {
+            match crate::artifact::usable(artifact) {
+                Ok(()) => {
+                    let map = match &artifact.source_map {
+                        Some(json) => Some(self.frontend.read_map(json).map_err(|why| {
+                            throw_error(ctx, &format!("module '{}': {why}", module.id))
+                        })?),
+                        None => None,
+                    };
+                    return Ok(Body::Bytecode(artifact.bytes.clone(), map));
+                }
+                Err(why) if module.source.is_empty() => {
+                    return Err(throw_error(ctx, &format!("module '{}': {why}", module.id)))
+                }
+                Err(_) => {}
+            }
+        }
+        match self.frontend.prepare(&module.source) {
+            Ok(prepared) => Ok(Body::Source(prepared)),
+            Err(errors) => {
+                let first = errors.into_iter().next();
+                let place = first
+                    .as_ref()
+                    .and_then(|error| error.line)
+                    .map_or_else(String::new, |line| format!(":{line}"));
+                let message = first.map_or_else(
+                    || "could not be prepared".to_string(),
+                    |error| error.message,
+                );
+                Err(rquickjs::Exception::throw_syntax(
+                    ctx,
+                    &format!("{}{place}: {message}", module.id),
+                ))
+            }
+        }
     }
 
     fn declare<'js>(

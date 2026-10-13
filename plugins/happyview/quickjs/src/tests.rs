@@ -713,10 +713,6 @@ fn an_import_nothing_serves_is_refused_naming_what_would() {
                 .to_string(),
         ),
         (
-            "import x from './helper.js';\nexport default () => 1;".to_string(),
-            path_refusal("./helper.js"),
-        ),
-        (
             "import x from 'https://example.com/x.js';\nexport default () => 1;".to_string(),
             path_refusal("https://example.com/x.js"),
         ),
@@ -729,6 +725,16 @@ fn an_import_nothing_serves_is_refused_naming_what_would() {
         assert_eq!(kind, ScriptErrorKind::Runtime, "{source}");
         assert_eq!(message, expected, "{source}");
     }
+
+    // A relative path is the host's to answer, and off wasm the host is not
+    // there to answer it.
+    let (_, message, ..) = failure_of(run_bounded(execute_input(
+        "import x from './helper.js';\nexport default () => 1;",
+    )));
+    assert!(
+        message.starts_with("cannot resolve './helper.js':"),
+        "{message}"
+    );
 }
 
 /// A library may not take an `internal.` name, whichever order the two
@@ -1233,4 +1239,240 @@ fn an_artifact_whose_stamp_mismatches_is_never_read() {
         assert_eq!(refused.code, "INTERPRETER_ERROR");
         assert!(refused.message.contains(named), "{}", refused.message);
     }
+}
+
+// --- local modules ----------------------------------------------------------
+
+const HANDLER: &str = "src/lexicons/app/test/q.js";
+
+fn run_project(fake: Fake, source: &str) -> (ExecuteOutput, Rc<Fake>) {
+    run_with(fake, source, json!({ "chunk_name": HANDLER }))
+}
+
+#[test]
+fn a_script_imports_a_module_by_a_relative_path() {
+    let (output, fake) = run_project(
+        fake().module(
+            "src/lexicons/app/test/lib/format.js",
+            "export function shout(s) { return s.toUpperCase(); }\nexport default { shout };",
+        ),
+        "import { shout } from './lib/format.js';\nimport fmt from './lib/format';\nexport default () => [shout('hi'), fmt.shout === shout];",
+    );
+    assert_eq!(returned(output).0, json!(["HI", true]));
+    assert_eq!(
+        fake.resolved.borrow().as_slice(),
+        &[
+            ("./lib/format.js".to_string(), HANDLER.to_string()),
+            ("./lib/format".to_string(), HANDLER.to_string()),
+        ]
+    );
+}
+
+#[test]
+fn a_module_is_evaluated_once_and_asked_for_once_per_importer() {
+    let (output, fake) = run_project(
+        fake()
+            .module(
+                "src/lexicons/app/test/shared.js",
+                "globalThis.loads = (globalThis.loads ?? 0) + 1;\nexport const id = {};",
+            )
+            .module(
+                "src/lexicons/app/test/lib/a.js",
+                "export { id } from '../shared.js';",
+            )
+            .module(
+                "src/lexicons/app/test/lib/b.js",
+                "export { id } from '../shared.js';",
+            ),
+        "import { id as a } from './lib/a.js';\nimport { id as b } from './lib/b.js';\nimport { id as c } from './shared.js';\n\
+         export default () => ({ loads: globalThis.loads, same: a === b && b === c });",
+    );
+    assert_eq!(returned(output).0, json!({ "loads": 1, "same": true }));
+    let resolved = fake.resolved.borrow();
+    assert!(resolved.contains(&(
+        "../shared.js".to_string(),
+        "src/lexicons/app/test/lib/a.js".to_string()
+    )));
+    let unique: std::collections::BTreeSet<_> = resolved.iter().collect();
+    assert_eq!(
+        unique.len(),
+        resolved.len(),
+        "a pair was asked twice: {resolved:?}"
+    );
+}
+
+/// QuickJS resolves a static import once per module, so only an `import()`
+/// run twice reaches the resolver twice with the same pair.
+#[test]
+fn a_repeated_dynamic_import_asks_the_host_once() {
+    let (output, fake) = run_project(
+        fake().module("src/lexicons/app/test/v.js", "export default 7;"),
+        "import v from './v.js';\n\
+         export default async () => [v, (await import('./v.js')).default, (await import('./v.js')).default];",
+    );
+    assert_eq!(returned(output).0, json!([7, 7, 7]));
+    let pair = ("./v.js".to_string(), HANDLER.to_string());
+    let asked = fake
+        .resolved
+        .borrow()
+        .iter()
+        .filter(|asked| **asked == pair)
+        .count();
+    assert_eq!(asked, 1, "{:?}", fake.resolved.borrow());
+}
+
+/// The same specifier from two directories is two modules: each importer
+/// resolves against its own location.
+#[test]
+fn one_specifier_from_two_importers_names_two_modules() {
+    let (output, fake) = run_project(
+        fake()
+            .module("src/lexicons/app/test/a/util.js", "export default 'a';")
+            .module("src/lexicons/app/test/b/util.js", "export default 'b';")
+            .module(
+                "src/lexicons/app/test/a/index.js",
+                "export { default } from './util.js';",
+            )
+            .module(
+                "src/lexicons/app/test/b/index.js",
+                "export { default } from './util.js';",
+            ),
+        "import a from './a/index.js';\nimport b from './b/index.js';\nexport default () => [a, b];",
+    );
+    assert_eq!(returned(output).0, json!(["a", "b"]));
+    let resolved = fake.resolved.borrow();
+    for importer in ["a", "b"] {
+        assert!(
+            resolved.contains(&(
+                "./util.js".to_string(),
+                format!("src/lexicons/app/test/{importer}/index.js")
+            )),
+            "{resolved:?}"
+        );
+    }
+}
+
+#[test]
+fn modules_that_import_each_other_work_as_es_modules_do() {
+    let (output, _) = run_project(
+        fake()
+            .module(
+                "src/lexicons/app/test/even.js",
+                "import { odd } from './odd.js';\nexport const even = (n) => n === 0 || odd(n - 1);",
+            )
+            .module(
+                "src/lexicons/app/test/odd.js",
+                "import { even } from './even.js';\nexport const odd = (n) => n !== 0 && even(n - 1);",
+            ),
+        "import { even } from './even.js';\nexport default () => [even(4), even(3)];",
+    );
+    assert_eq!(returned(output).0, json!([true, false]));
+}
+
+#[test]
+fn a_dynamic_import_resolves_against_the_module_it_is_written_in() {
+    let (output, fake) = run_project(
+        fake()
+            .module(
+                "src/lexicons/app/test/lib/late.js",
+                "export const load = () => import('./value.js');",
+            )
+            .module("src/lexicons/app/test/lib/value.js", "export default 42;"),
+        "import { load } from './lib/late.js';\nexport default async () => (await load()).default;",
+    );
+    assert_eq!(returned(output).0, json!(42));
+    assert!(fake.resolved.borrow().contains(&(
+        "./value.js".to_string(),
+        "src/lexicons/app/test/lib/late.js".to_string()
+    )));
+}
+
+#[test]
+fn a_miss_fails_with_the_hosts_sentence() {
+    let (output, _) = run_project(
+        fake(),
+        "import x from './nope.js';\nexport default () => x;",
+    );
+    let (kind, message, ..) = failure_of(output);
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert_eq!(
+        message,
+        format!("no module './nope.js' from {HANDLER}: looked for src/lexicons/app/test/nope.js")
+    );
+}
+
+#[test]
+fn an_error_inside_a_module_names_the_module_and_its_line() {
+    let (output, _) = run_project(
+        fake().module(
+            "src/lexicons/app/test/lib/format.js",
+            "export function f(t) {\n  return t.x;\n}",
+        ),
+        "import { f } from './lib/format.js';\nexport default () => f(undefined);",
+    );
+    match output {
+        ExecuteOutput::Error { chunk, line, .. } => {
+            assert_eq!(
+                chunk.as_deref(),
+                Some("src/lexicons/app/test/lib/format.js")
+            );
+            assert_eq!(line, Some(2));
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_module_runs_from_its_artifact_and_falls_back_to_source_when_it_cannot() {
+    let id = "src/lexicons/app/test/m.js";
+    let mut artifact = validate_with("export default 'bytecode';", id, true, true)
+        .artifact
+        .expect("an artifact");
+    let (output, _) = run_project(
+        fake().module_artifact(id, "", artifact.clone()),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    assert_eq!(returned(output).0, json!("bytecode"));
+
+    artifact.engine = "quickjs-ng-0.10.0".to_string();
+    let (output, _) = run_project(
+        fake().module_artifact(id, "export default 'source';", artifact.clone()),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    assert_eq!(returned(output).0, json!("source"));
+
+    let (output, _) = run_project(
+        fake().module_artifact(id, "", artifact),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    let (_, message, ..) = failure_of(output);
+    assert!(message.contains("quickjs-ng-0.10.0"), "{message}");
+}
+
+#[test]
+fn a_bare_name_still_means_a_builtin_or_a_library() {
+    let (output, fake) = run_project(
+        echo(fake()),
+        "import json from 'internal.json';\nimport db from 'happyview.db';\nexport default async () => [json.encode({ a: 1 }), (await db.get('x')).via];",
+    );
+    assert_eq!(
+        returned(output).0,
+        json!([r#"{"a":1}"#, "happyview-db.get"])
+    );
+    assert!(fake.resolved.borrow().is_empty());
+}
+
+#[test]
+fn a_module_that_failed_to_compile_fails_the_same_way_when_imported_again() {
+    let (output, _) = run_project(
+        fake().module("src/lexicons/app/test/broken.js", "export const = 1;"),
+        "const attempt = () => import('./broken.js').then(() => 'loaded', (e) => String(e));\n\
+         export default async () => [await attempt(), await attempt()];",
+    );
+    let value = returned(output).0;
+    assert_eq!(value[0], value[1], "{value}");
+    assert!(
+        value[0].as_str().unwrap().starts_with("SyntaxError"),
+        "{value}"
+    );
 }
