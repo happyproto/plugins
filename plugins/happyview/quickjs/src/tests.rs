@@ -46,6 +46,7 @@ fn validate_input(source: &str) -> ValidateInput {
     ValidateInput {
         source: source.to_string(),
         removed_globals: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -75,6 +76,7 @@ fn failure_of(output: ExecuteOutput) -> (ScriptErrorKind, String, Option<u32>, S
             message,
             line,
             raw,
+            ..
         } => (kind, message, line, raw),
         other => panic!("expected a failure, got {other:?}"),
     }
@@ -925,6 +927,7 @@ fn a_front_end_refusal_is_the_scripts_failure_in_both_exports() {
             message: "first".to_string(),
             line: Some(3),
             raw: "line 3: first\nsecond".to_string(),
+            chunk: None,
         }
     );
 }

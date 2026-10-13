@@ -85,6 +85,7 @@ impl Corpus<'_> {
                 &ValidateInput {
                     source: self.read(stem),
                     removed_globals: Vec::new(),
+                    ..Default::default()
                 },
             )
             .expect("validate should answer an output rather than an envelope error");
