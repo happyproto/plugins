@@ -1,4 +1,5 @@
-//! `import`: a built-in, or an installed library plugin reached through the
+//! `import`: the script itself, which a run's entry imports by its chunk
+//! name; a built-in; or an installed library plugin reached through the
 //! bridge. Namespaces are paired with plugin ids in the execute input,
 //! because a script imports the first and the host imports take the second,
 //! and resolving one from the other inside the guest would move namespace
@@ -23,6 +24,7 @@ use crate::backend::Backend;
 use crate::bridge;
 use crate::builtins::{self, throw_error};
 use crate::calls::{library_error, Calls};
+use crate::{Chunks, Prepared, SourceMap};
 
 /// Whether `name` names a file beside the importer rather than a built-in
 /// or a library.
@@ -40,16 +42,19 @@ fn refusal(name: &str) -> String {
 
 /// How a specifier becomes the name QuickJS loads and caches a module by.
 pub struct Specifiers {
-    validating: bool,
+    /// `None` while validating.
+    project: Option<Rc<Project>>,
 }
 
 impl Specifiers {
     pub fn validating() -> Self {
-        Self { validating: true }
+        Self { project: None }
     }
 
-    pub fn running() -> Self {
-        Self { validating: false }
+    pub fn running(project: Rc<Project>) -> Self {
+        Self {
+            project: Some(project),
+        }
     }
 }
 
@@ -57,7 +62,7 @@ impl Resolver for Specifiers {
     fn resolve<'js>(
         &mut self,
         ctx: &Ctx<'js>,
-        _base: &str,
+        base: &str,
         name: &str,
         _attributes: Option<ImportAttributes<'js>>,
     ) -> Result<String> {
@@ -65,13 +70,116 @@ impl Resolver for Specifiers {
         if (name.starts_with('.') && !relative) || name.starts_with('/') || name.contains(':') {
             return Err(throw_error(ctx, &refusal(name)));
         }
-        // Validation stubs every import, a relative one included: whether
-        // the file exists is the host's question, asked of the imports
-        // `validate` reports.
-        if relative && !self.validating {
-            return Err(throw_error(ctx, &refusal(name)));
+        match &self.project {
+            // Validation stubs every import, a relative one included: whether
+            // the file exists is the host's question, asked of the imports
+            // `validate` reports.
+            None => Ok(name.to_string()),
+            Some(project) if base == ENTRY && name == project.main() => Ok(name.to_string()),
+            Some(_) if relative => Err(throw_error(ctx, &refusal(name))),
+            Some(_) => Ok(name.to_string()),
         }
-        Ok(name.to_string())
+    }
+}
+
+/// The module a run declares and evaluates. It imports the script by its
+/// chunk name, which sends the script through the loader like any other
+/// module: a module read back from bytecode is linked to its own imports
+/// only when QuickJS reaches it as an import.
+pub const ENTRY: &str = "<entry>";
+
+pub fn entry_source(main: &str) -> String {
+    let quoted = serde_json::to_string(main).expect("a string always encodes");
+    format!("import * as main from {quoted};\nexport default main;\n")
+}
+
+/// Project code as the loader declares it.
+pub enum Body {
+    /// Bytecode `validate` wrote, with the map its front end kept.
+    Bytecode(Vec<u8>, Option<SourceMap>),
+    Source(Prepared),
+}
+
+/// A run's project code: the script, under its chunk name.
+pub struct Project {
+    main: String,
+    body: RefCell<Option<Body>>,
+    pub chunks: RefCell<Chunks>,
+}
+
+impl Project {
+    pub fn new(main: &str, body: Body) -> Self {
+        Self {
+            main: main.to_string(),
+            body: RefCell::new(Some(body)),
+            chunks: RefCell::new(Chunks::default()),
+        }
+    }
+
+    pub fn main(&self) -> &str {
+        &self.main
+    }
+
+    /// `name`'s module when it is project code; `None` sends the loader on
+    /// to the built-ins and the libraries.
+    pub fn load<'js>(&self, ctx: &Ctx<'js>, name: &str) -> Option<Result<Module<'js, Declared>>> {
+        if name != self.main {
+            return None;
+        }
+        let body = self.body.borrow_mut().take()?;
+        Some(self.declare(ctx, name, body))
+    }
+
+    fn declare<'js>(
+        &self,
+        ctx: &Ctx<'js>,
+        name: &str,
+        body: Body,
+    ) -> Result<Module<'js, Declared>> {
+        match body {
+            Body::Bytecode(bytes, map) => {
+                self.chunks.borrow_mut().insert(name, map);
+                // SAFETY: QuickJS does not verify bytecode. These bytes came
+                // from the host, which hands back only artifacts this
+                // interpreter's own `validate` wrote, and `artifact::usable`
+                // has checked they are this engine's.
+                let module = unsafe { Module::load(ctx.clone(), &bytes) }?;
+                let compiled_as: String = module.name()?;
+                if compiled_as != name {
+                    return Err(throw_error(
+                        ctx,
+                        &format!(
+                            "the prepared artifact for '{name}' was compiled as '{compiled_as}'"
+                        ),
+                    ));
+                }
+                Ok(module)
+            }
+            Body::Source(Prepared { code, map, .. }) => {
+                self.chunks.borrow_mut().insert(name, map);
+                Module::declare(ctx.clone(), name, code)
+            }
+        }
+    }
+}
+
+/// Project code first, then what [`Libraries`] serves.
+pub struct Load {
+    pub project: Rc<Project>,
+    pub libraries: Libraries,
+}
+
+impl Loader for Load {
+    fn load<'js>(
+        &mut self,
+        ctx: &Ctx<'js>,
+        name: &str,
+        attributes: Option<ImportAttributes<'js>>,
+    ) -> Result<Module<'js, Declared>> {
+        if let Some(module) = self.project.load(ctx, name) {
+            return module;
+        }
+        self.libraries.load(ctx, name, attributes)
     }
 }
 
