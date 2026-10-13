@@ -41,7 +41,8 @@ end
 In the result, `status` is the integer status code, `body` is the response
 text (always `""` for `head`), and `headers` is keyed by **lower-cased**
 header name, so `res.headers["content-type"]` works whatever the server
-wrote. A response that isn't valid UTF-8 has its invalid bytes replaced.
+wrote. A body that isn't valid UTF-8 — an image, say — arrives as
+`{"$bytes": "<base64>"}` rather than as text.
 
 A 4xx or 5xx response is a result, not an error: check `status`. Redirects
 are followed.
