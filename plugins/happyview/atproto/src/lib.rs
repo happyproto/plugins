@@ -87,7 +87,7 @@ fn identity_shape() -> Value {
 
 fn blob_shape() -> Value {
     json!({"type": "object", "properties": [
-        {"name": "bytes", "type": "string", "description": "UTF-8 text, or an array of byte values when not UTF-8"},
+        {"name": "bytes", "type": "string", "description": "UTF-8 text, or {\"$bytes\": \"<base64>\"} when not UTF-8"},
         {"name": "mime_type", "type": "string"},
         {"name": "size", "type": "integer"}
     ]})

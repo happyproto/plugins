@@ -13,9 +13,9 @@ use alloc::vec::Vec;
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    json, library_plugin, ApiExport, ApiSurface, CallContext, LinkedRepoBlobUpload, LinkedRepoCall,
-    LinkedRepoRecordCreate, LinkedRepoRecordDelete, LinkedRepoRecordPut, ObjectCall, PluginError,
-    PluginInfo, RecordRef, Value,
+    json, library_plugin, ApiExport, ApiSurface, Bytes, CallContext, LinkedRepoBlobUpload,
+    LinkedRepoCall, LinkedRepoRecordCreate, LinkedRepoRecordDelete, LinkedRepoRecordPut,
+    ObjectCall, PluginError, PluginInfo, RecordRef, Value,
 };
 
 library_plugin! {
@@ -188,28 +188,20 @@ fn str_arg(args: &[Value], index: usize, name: &str) -> Result<String, PluginErr
         .ok_or_else(|| PluginError::bad_input(format!("{name} is required")))
 }
 
-/// The wire type accepts `bytes` as a JSON string (UTF-8 content) or an array
-/// of byte values; this mirrors that here, ahead of the host call, so a
-/// malformed blob body fails fast with a script-actionable message rather
-/// than a `serde` error surfaced through `HOST_ERROR`.
+/// Content as the host's wire carries bytes: a string when it is text, and
+/// `{"$bytes": "<base64>"}` when it is not, since a JSON string cannot hold
+/// bytes that are not valid UTF-8.
 fn bytes_arg(args: &[Value], index: usize) -> Result<Vec<u8>, PluginError> {
-    match args.get(index) {
-        Some(Value::String(text)) => Ok(text.clone().into_bytes()),
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(|item| {
-                item.as_u64()
-                    .filter(|n| *n <= u8::MAX as u64)
-                    .map(|n| n as u8)
-                    .ok_or_else(|| {
-                        PluginError::bad_input("bytes must be an array of byte values (0-255)")
-                    })
-            })
-            .collect(),
-        _ => Err(PluginError::bad_input(
-            "bytes is required and must be a string or an array of bytes",
-        )),
-    }
+    let value = args
+        .get(index)
+        .ok_or_else(|| PluginError::bad_input("bytes is required"))?;
+    Bytes::from_value(value)
+        .map(|Bytes(bytes)| bytes)
+        .map_err(|e| {
+            PluginError::bad_input(alloc::format!(
+                "bytes must be a string or {{\"$bytes\": \"<base64>\"}}: {e}"
+            ))
+        })
 }
 
 /// A method's one table argument (`create_record`, `put_record`,
@@ -294,9 +286,16 @@ mod tests {
     }
 
     #[test]
-    fn bytes_arg_reads_a_byte_array() {
-        let args = [json!([0, 159, 146, 150])];
-        assert_eq!(bytes_arg(&args, 0).unwrap(), vec![0, 159, 146, 150]);
+    fn bytes_arg_reads_dollar_bytes() {
+        // The case a string cannot carry: 0xff is not valid UTF-8.
+        let args = [json!({"$bytes": "AGH/"})];
+        assert_eq!(bytes_arg(&args, 0).unwrap(), vec![0u8, 97, 255]);
+    }
+
+    #[test]
+    fn bytes_arg_refuses_an_array_of_numbers() {
+        let args = [json!([0, 97, 255])];
+        assert_eq!(bytes_arg(&args, 0).unwrap_err().code, "BAD_INPUT");
     }
 
     #[test]
@@ -309,13 +308,6 @@ mod tests {
     #[test]
     fn bytes_arg_rejects_a_non_string_non_array() {
         let args = [json!(42)];
-        let err = bytes_arg(&args, 0).unwrap_err();
-        assert_eq!(err.code, "BAD_INPUT");
-    }
-
-    #[test]
-    fn bytes_arg_rejects_an_out_of_range_byte_value() {
-        let args = [json!([1, 2, 300])];
         let err = bytes_arg(&args, 0).unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
     }

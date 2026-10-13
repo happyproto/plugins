@@ -28,7 +28,7 @@ return {["$type"] = "blob", ref = {["$link"] = info.cid},
 - `stat(cid)` returns `{cid, mime_type, size}`, or nil, without transferring anything.
 - `exists(cid)` returns a boolean.
 
-A JSON string can't hold arbitrary bytes, so bytes that aren't UTF-8 travel as an array of byte values, in both directions. `put` accepts a string or an array, and `get` returns a string only when the content is valid UTF-8. `stat` doesn't return bytes, so prefer it when you only need the size or type.
+A JSON string can't hold arbitrary bytes, so bytes that aren't UTF-8 travel as `{"$bytes": "<base64>"}`, in both directions, the form atproto's own JSON uses. `put` accepts either form, and `get` returns a string only when the content is valid UTF-8. `stat` doesn't return bytes, so prefer it when you only need the size or type.
 
 ## Capabilities
 

@@ -17,7 +17,7 @@ end
 
 - `resolve_identity(identifier)` takes a handle or a DID and returns `{did, handle}`. `handle` is nil unless the handle and the DID document point at each other, so you never put an unverified handle on screen.
 - `resolve_service_endpoint(did)` returns the service the DID document advertises (usually its PDS), or nil.
-- `blob_download(did, cid)` returns `{bytes, mime_type, size}`. Bytes that aren't UTF-8 arrive as an array of byte values.
+- `blob_download(did, cid)` returns `{bytes, mime_type, size}`. Bytes that aren't UTF-8 arrive as `{"$bytes": "<base64>"}`, the form atproto's own JSON uses.
 - `get_labels(uri)` returns an array of labels. `get_labels_batch(uris)` caps at 100 URIs and returns a table keyed by URI, with every requested URI present.
 - `sign(record)` returns an inline signature object to attach to the record.
 - `verify_signature(record, signature, repo_did)` returns a boolean.

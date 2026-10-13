@@ -46,9 +46,9 @@ end
 ## Bytes and JSON
 
 A Lua string is a byte string; a JSON string is not. Content that is not
-valid UTF-8 therefore crosses as an array of byte values in both directions:
-`put` accepts either shape, and `get` answers a string when the content is
-valid UTF-8 and an array otherwise. `stat` avoids the question, which is one
+valid UTF-8 therefore crosses as `{"$bytes": "<base64>"}` in both directions,
+the form atproto's own JSON gives bytes: `put` accepts either shape, and `get`
+answers a string when the content is valid UTF-8 and `$bytes` otherwise. `stat` avoids the question, which is one
 reason to prefer it.
 
 ## Capabilities

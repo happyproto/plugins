@@ -30,7 +30,7 @@ local lexicon = record.lexicon("app.bsky.feed.post")   -- table or nil
   unless it matches the record's current CID), `opts.validate` (default
   `true`, as for `create`). Returns `{uri, cid}`.
 - `delete(uri)` — deletes from the user's own repo.
-- `upload_blob(bytes, mime_type)` — `bytes` is a string or byte array;
+- `upload_blob(bytes, mime_type)` — `bytes` is a string or `{"$bytes": "<base64>"}`;
   returns the PDS's blob ref, as-is.
 - `load(uri)` — one indexed record, or nil.
 - `save_local(collection, rkey, tbl[, did])` — writes straight into the local
