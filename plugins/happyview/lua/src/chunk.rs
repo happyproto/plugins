@@ -20,6 +20,16 @@ pub fn lua_name(name: &str) -> String {
     }
 }
 
+/// The chunk name a function's source records, when it is a script's or a
+/// module's. The plugin's own chunks are `=`-named, and C functions are
+/// `=[C]`, so neither is anybody's file.
+pub fn name_of_source(source: &str) -> Option<&str> {
+    if source == DEFAULT {
+        return Some(DEFAULT);
+    }
+    source.strip_prefix('@')
+}
+
 /// Source text, and never a binary chunk. PUC Lua does not verify bytecode,
 /// so the only bytecode a VM loads is an artifact the host supplied.
 pub fn load_source(lua: &Lua, name: &str, source: &str) -> LuaResult<Function> {
@@ -181,6 +191,11 @@ mod tests {
     fn the_dashboard_chunk_keeps_its_bare_name_and_a_project_chunk_is_a_file() {
         assert_eq!(lua_name("script"), "script");
         assert_eq!(lua_name("lib/format.lua"), "@lib/format.lua");
+        assert_eq!(name_of_source("script"), Some("script"));
+        assert_eq!(name_of_source("@lib/format.lua"), Some("lib/format.lua"));
+        // The plugin's own chunks are `=`-named and are nobody's file.
+        assert_eq!(name_of_source("=catch_guards"), None);
+        assert_eq!(name_of_source("=[C]"), None);
     }
 
     #[test]

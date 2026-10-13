@@ -64,12 +64,17 @@ pub fn install(lua: &Lua, libraries: &[LibraryRef]) -> LuaResult<()> {
         .map(|entry| (entry.namespace.clone(), entry.id.clone()))
         .collect();
 
-    let require = lua.create_function(move |lua, name: String| {
+    let require = lua.create_function(move |lua, name: String| -> LuaResult<Value> {
+        // A path names a file in the run's project, not a built-in or a
+        // library, and a local module may return any value at all.
+        if crate::modules::is_relative(&name) {
+            return crate::modules::require(lua, &name);
+        }
         let loaded: Table = lua.named_registry_value(LOADED_KEY)?;
         // One table per name per VM: a module is stateful once a constructor
         // has handed out objects, and two copies would not share that state.
         if let Value::Table(cached) = loaded.raw_get::<Value>(name.as_str())? {
-            return Ok(cached);
+            return Ok(Value::Table(cached));
         }
 
         let module = match builtins::module(lua, &name)? {
@@ -88,7 +93,7 @@ pub fn install(lua: &Lua, libraries: &[LibraryRef]) -> LuaResult<()> {
             }
         };
         loaded.raw_set(name.as_str(), &module)?;
-        Ok(module)
+        Ok(Value::Table(module))
     })?;
     lua.globals().set("require", require)
 }
@@ -258,12 +263,44 @@ fn call(
     }
 }
 
-/// For `validate`: every module is a table whose every field is a function
+const VALUE_STUB_KEY: &str = "happyview.require.value_stub";
+
+/// For `validate`: every library is a table whose every field is a function
 /// returning another such table, so a top-level chain of any shape compiles
-/// without an instance of anything.
+/// without an instance of anything. A local module may export values rather
+/// than functions, so a relative name answers a stand-in that also survives
+/// arithmetic, concatenation, comparison and a length.
 pub fn install_stub(lua: &Lua) -> LuaResult<()> {
-    let require = lua.create_function(|lua, _name: String| stub(lua))?;
+    lua.set_named_registry_value(VALUE_STUB_KEY, value_stub(lua)?)?;
+    let require = lua.create_function(|lua, name: String| {
+        if crate::modules::is_relative(&name) {
+            return lua.named_registry_value::<Table>(VALUE_STUB_KEY);
+        }
+        stub(lua)
+    })?;
     lua.globals().set("require", require)
+}
+
+/// One table that every operation on it answers with itself, or with what the
+/// operator has to produce: a number for a length, a boolean for a comparison.
+fn value_stub(lua: &Lua) -> LuaResult<Table> {
+    let itself = lua
+        .create_function(|lua, _: MultiValue| lua.named_registry_value::<Table>(VALUE_STUB_KEY))?;
+    let meta = lua.create_table()?;
+    for event in [
+        "__index", "__call", "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
+        "__idiv", "__concat",
+    ] {
+        meta.set(event, &itself)?;
+    }
+    meta.set("__len", lua.create_function(|_, _: MultiValue| Ok(0))?)?;
+    let never = lua.create_function(|_, _: MultiValue| Ok(false))?;
+    for event in ["__lt", "__le", "__eq"] {
+        meta.set(event, &never)?;
+    }
+    let table = lua.create_table()?;
+    table.set_metatable(Some(meta))?;
+    Ok(table)
 }
 
 fn stub(lua: &Lua) -> LuaResult<Table> {
@@ -519,5 +556,26 @@ mod tests {
         )
         .exec()
         .expect("a stub chain of any shape should compile");
+    }
+
+    #[test]
+    fn the_stub_answers_a_local_module_with_a_value_any_expression_accepts() {
+        let lua = sandbox();
+        install_stub(&lua).unwrap();
+        lua.load(
+            "local config = require('./config') \
+             local limit = config.limit * 2 .. '' \
+             local label = 'v' .. require('../version').name \
+             local n = -config.n + #config + config.f(1).g % 3 // 2 ^ 1 - 1 / 1 \
+             if config.a < 1 or config.b <= 2 or config == config then end \
+             function handle() return limit, label, n end",
+        )
+        .exec()
+        .expect("a local module's values should survive file scope");
+        // A library is still the function-valued stub.
+        assert!(eval::<bool>(
+            &lua,
+            "return type(require('happyview.db').records) == 'function'"
+        ));
     }
 }
