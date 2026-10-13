@@ -151,6 +151,15 @@ db.records("app.example.post"):where("author", ctx.caller_did):limit(5):run()
 A library's error arrives as a Lua error whose text is the one the host
 renders, so a script matching on a code inside it keeps working.
 
+`validate` runs a file's top level without any library or local module in
+reach, so each `require` there answers a stand-in. A library's stand-in is a
+table of functions. A local module's (`require("./config")`) is a value that
+survives indexing, calling, arithmetic, concatenation, comparison and `#`,
+because a module may export values rather than functions. A top-level use a
+stand-in cannot satisfy is still refused, such as
+`string.rep(require("./c").s, 2)`, which needs a real string. Move that use
+into `handle`, where the real module is loaded.
+
 `nil` and JSON `null` are kept apart deliberately. A **library result's**
 `null` becomes `nil`, so `if row.handle then` and `== nil` both behave.
 A `null` anywhere else — in `input`, in `ctx`, in `json.decode` — is a

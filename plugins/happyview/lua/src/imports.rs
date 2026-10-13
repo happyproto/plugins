@@ -41,7 +41,7 @@ pub fn relative_requires(source: &str) -> Vec<ImportRef> {
             _ => None,
         };
         if let Some((Some(text), line)) = literal {
-            if text.starts_with("./") || text.starts_with("../") {
+            if crate::modules::is_relative(text) {
                 found.push(ImportRef {
                     specifier: text.clone(),
                     line,

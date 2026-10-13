@@ -11,6 +11,7 @@ mod conformance;
 mod convert;
 mod ctx;
 mod imports;
+mod modules;
 mod require;
 mod sandbox;
 
@@ -36,13 +37,24 @@ interpreter_plugin! {
 }
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
+    execute_with(input, modules::host())
+}
+
+/// [`execute_script`] with relative `require`s resolved through `resolver`,
+/// which a test chooses.
+pub(crate) fn execute_with(
+    input: &ExecuteInput,
+    resolver: Box<dyn modules::Resolver>,
+) -> Result<ExecuteOutput, PluginError> {
     let lua = sandbox::create(&input.removed_globals).map_err(interpreter_error)?;
     // The budget goes first: `internal.async` resumes through the catch guard
     // it installs, and takes it when `require` is installed.
     let budget = budget::install(&lua, &input.limits).map_err(interpreter_error)?;
     require::install(&lua, &input.libraries).map_err(interpreter_error)?;
+    modules::install(&lua, &input.chunk_name, resolver).map_err(interpreter_error)?;
+    let failed =
+        |default, e: &mlua::Error| script_failure(default, e, &budget, &modules::known(&lua));
 
-    let known = [input.chunk_name.clone()];
     let main = chunk::load(
         &lua,
         &input.chunk_name,
@@ -51,7 +63,7 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     )
     .map_err(|why| PluginError::new("INTERPRETER_ERROR", why))?;
     if let Err(e) = main.and_then(|main| main.call::<()>(())) {
-        return Ok(script_failure(load_failure_kind(&e), &e, &budget, &known));
+        return Ok(failed(load_failure_kind(&e), &e));
     }
     let Ok(handle) = lua.globals().get::<mlua::Function>("handle") else {
         return Ok(failure(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
@@ -63,26 +75,12 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
         Ok(arguments) => arguments,
         // A ceiling small enough to refuse the arguments is the script's
         // limit being reached, not the interpreter failing.
-        Err(e) => {
-            return Ok(script_failure(
-                ScriptErrorKind::Runtime,
-                &e,
-                &budget,
-                &known,
-            ))
-        }
+        Err(e) => return Ok(failed(ScriptErrorKind::Runtime, &e)),
     };
 
     let returned: mlua::Value = match handle.call(arguments) {
         Ok(value) => value,
-        Err(e) => {
-            return Ok(script_failure(
-                ScriptErrorKind::Runtime,
-                &e,
-                &budget,
-                &known,
-            ))
-        }
+        Err(e) => return Ok(failed(ScriptErrorKind::Runtime, &e)),
     };
 
     // A script that reached a normal return with its budget spent has escaped
@@ -96,12 +94,7 @@ fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     let value_kind = value_kind(&returned);
     match convert::to_json(&lua, returned) {
         Ok(value) => Ok(ExecuteOutput::Returned { value, value_kind }),
-        Err(e) => Ok(script_failure(
-            ScriptErrorKind::Runtime,
-            &e,
-            &budget,
-            &known,
-        )),
+        Err(e) => Ok(failed(ScriptErrorKind::Runtime, &e)),
     }
 }
 
@@ -351,6 +344,26 @@ mod tests {
         let validated = validate_source(&input).unwrap();
         assert!(validated.valid, "{:?}", validated.errors);
         assert!(validated.artifact.is_some());
+    }
+
+    #[test]
+    fn a_local_modules_values_survive_file_scope_at_validation() {
+        for (role, source) in [
+            (
+                ChunkRole::Module,
+                "local LIMIT = require('./config').limit * 2 .. ''\nreturn { limit = LIMIT }",
+            ),
+            (
+                ChunkRole::Handler,
+                "local LIMIT = require('./config').limit * 2 .. ''\nfunction handle() return LIMIT end",
+            ),
+        ] {
+            let mut input = validate_input(source, &[]);
+            input.role = role;
+            input.chunk_name = Some("src/lib/m.lua".to_string());
+            let validated = validate_source(&input).unwrap();
+            assert!(validated.valid, "{role:?}: {:?}", validated.errors);
+        }
     }
 
     #[test]
