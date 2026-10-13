@@ -1,7 +1,11 @@
-# Publishes a plugin release that is already on GitHub to the registry, for
-# when the release job cut the GitHub release but the registry publish
-# failed: rerunning that job finds nothing new to release, so it would never
-# try again. Builds the plugin from its release tag and publishes it; a
+# Publishes a plugin release that is already on GitHub to the registry: a
+# release made before registry publishing existed, or one whose registry
+# publish failed after the release job cut it (rerunning that job finds
+# nothing new to release, so it would never try again).
+#
+# It publishes the release's own assets, the module and manifest.json that
+# people already download, rather than rebuilding at the tag, with hpy.toml
+# and the tooling from the default branch (older tags have neither). A
 # version the registry already has is skipped, so running this twice is safe.
 name: Publish a plugin release
 
@@ -39,53 +43,29 @@ on:
 permissions:
   contents: read
 
-env:
-  WASI_SDK_VERSION: "34.0"
-
 jobs:
   publish:
     runs-on: ubuntu-24.04
     env:
       DIR: plugins/happyview/${{ inputs.plugin }}
+      TAG: happyview-${{ inputs.plugin }}-v${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: happyview-${{ inputs.plugin }}-v${{ inputs.version }}
 
-      - name: Find the module
+      - name: Download the release's module and manifest
         id: module
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          wasm=$(node release/release-config.mjs wasm "$DIR")
-          # ../../../target/<triple>/release/<module>.wasm
-          triple=$(basename "$(dirname "$(dirname "$wasm")")")
-          {
-            echo "wasm=$wasm"
-            echo "triple=$triple"
-            echo "crate=$(jq -r .id "$DIR/manifest.json")"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Add the target
-        run: rustup target add ${{ steps.module.outputs.triple }}
-
-      # The interpreters vendor C, compiled with clang from wasi-sdk.
-      - name: Cache wasi-sdk
-        if: steps.module.outputs.triple == 'wasm32-wasip1'
-        id: wasi-sdk
-        uses: actions/cache@v4
-        with:
-          path: /opt/wasi-sdk
-          key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
-
-      - name: Install wasi-sdk
-        if: steps.module.outputs.triple == 'wasm32-wasip1' && steps.wasi-sdk.outputs.cache-hit != 'true'
-        run: |
-          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION%%.*}/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux.tar.gz"
-          mkdir -p /opt/wasi-sdk
-          tar -xzf /tmp/wasi-sdk.tar.gz --strip-components=1 -C /opt/wasi-sdk
-
-      - name: Build
-        run: cargo build --release --target ${{ steps.module.outputs.triple }} -p ${{ steps.module.outputs.crate }}
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$DIR" --clobber \
+            --pattern '*.wasm' --pattern manifest.json
+          # The release uploads exactly one module (release/release-config.test.mjs).
+          modules=$(cd "$DIR" && ls -- *.wasm)
+          if [ "$(echo "$modules" | wc -l)" -ne 1 ]; then
+            echo "::error::expected one .wasm in $TAG, found: $modules"
+            exit 1
+          fi
+          echo "wasm=$modules" >> "$GITHUB_OUTPUT"
 
       - uses: happyproto/actions/plugin-publish@v1
         with:
