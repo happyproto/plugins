@@ -951,6 +951,7 @@ impl Frontend for Shifting {
         Ok(Prepared {
             code: format!("\n\n{source}"),
             map: Some(SourceMap::new(mappings)),
+            source_map: None,
         })
     }
 }
