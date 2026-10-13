@@ -73,6 +73,9 @@ fn load_artifact(lua: &Lua, name: &str, artifact: &PreparedArtifact) -> Result<F
     let main = lua
         .load(artifact.bytes.as_slice())
         .set_mode(ChunkMode::Binary)
+        // A dump ignores this for its positions; it only labels a load error,
+        // which would otherwise name this file.
+        .set_name(lua_name(name))
         .into_function()
         .map_err(|e| format!("the prepared artifact for {name} did not load: {e}"))?;
     let expected = lua_name(name);
@@ -241,6 +244,52 @@ mod tests {
         assert_eq!(located.chunk.as_deref(), Some(long.as_str()), "{error}");
         assert_eq!(located.line, Some(1));
         assert_eq!(located.message, "x");
+    }
+
+    /// The error Lua raises in a chunk named `name`, by name alone.
+    fn raised_in(name: &str) -> String {
+        mlua::Lua::new()
+            .load("error('x')")
+            .set_name(lua_name(name))
+            .exec()
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[test]
+    fn the_shortening_limit_is_pinned_at_the_byte() {
+        // `luaO_chunkid` keeps an `@` name whole while it is under 60 bytes.
+        let whole = "a".repeat(59);
+        let error = raised_in(&whole);
+        assert!(error.contains(&format!("{whole}:1:")), "{error}");
+        assert!(!error.contains("..."), "{error}");
+        let located = locate(&error, std::slice::from_ref(&whole));
+        assert_eq!(located.chunk.as_deref(), Some(whole.as_str()), "{error}");
+
+        let shortened = "a".repeat(60);
+        let error = raised_in(&shortened);
+        assert!(
+            error.contains(&format!("...{}:1:", "a".repeat(56))),
+            "{error}"
+        );
+        let located = locate(&error, std::slice::from_ref(&shortened));
+        assert_eq!(
+            located.chunk.as_deref(),
+            Some(shortened.as_str()),
+            "{error}"
+        );
+        assert_eq!(located.line, Some(1));
+    }
+
+    #[test]
+    fn a_damaged_artifact_reports_the_chunk_and_not_the_plugins_own_file() {
+        let lua = mlua::Lua::new();
+        let main = load_source(&lua, "lib/format.lua", "return 1").unwrap();
+        let mut artifact = crate::artifact::prepare(&main);
+        artifact.bytes.truncate(artifact.bytes.len() / 2);
+        let error = load(&lua, "lib/format.lua", "", Some(&artifact)).unwrap_err();
+        assert!(error.contains("lib/format.lua"), "{error}");
+        assert!(!error.contains("src/chunk.rs"), "{error}");
     }
 
     #[test]
