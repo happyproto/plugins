@@ -1,7 +1,8 @@
 //! A module's prepared form: QuickJS bytecode, written with its debug
 //! information and source text kept, so a run loads it without parsing or
 //! compiling, its stack frames still carry lines, and `Function.prototype.
-//! toString` still answers the author's text.
+//! toString` still answers the text QuickJS compiled: the author's for
+//! JavaScript, the front end's output for a language that has one.
 
 use std::ffi::CStr;
 

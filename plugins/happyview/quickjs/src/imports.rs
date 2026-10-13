@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use happyview_plugin_sdk::{LibraryRef, ModuleResolve, ResolvedModule};
+use happyview_plugin_sdk::{LibraryRef, ModuleResolve, PreparedArtifact, ResolvedModule};
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::module::Declared;
 use rquickjs::{Ctx, Module, Result};
@@ -96,9 +96,50 @@ pub fn entry_source(main: &str) -> String {
 
 /// Project code as the loader declares it.
 pub enum Body {
-    /// Bytecode `validate` wrote, with the map its front end kept.
-    Bytecode(Vec<u8>, Option<SourceMap>),
+    Bytecode(Bytecode),
     Source(Prepared),
+}
+
+/// Bytecode `validate` wrote, with the map its front end kept. Its fields
+/// are private so that [`Body::from_artifact`] is the only way to build
+/// one: QuickJS does not verify bytecode, and that is where an artifact's
+/// stamp is checked.
+pub struct Bytecode {
+    bytes: Vec<u8>,
+    map: Option<SourceMap>,
+}
+
+impl Body {
+    /// A chunk's bytecode, when the host sent an artifact this build can
+    /// load and its map reads back. `Ok(None)` says to prepare `source`
+    /// instead: there is no artifact, or there is source to fall back to.
+    /// The `Err` is an artifact that cannot be used with no source behind
+    /// it, which the handler reports as the host's fault and a module throws
+    /// at its importer.
+    pub fn from_artifact(
+        frontend: &dyn Frontend,
+        artifact: Option<&PreparedArtifact>,
+        source: &str,
+    ) -> std::result::Result<Option<Body>, String> {
+        let Some(artifact) = artifact else {
+            return Ok(None);
+        };
+        let map = crate::artifact::usable(artifact).and_then(|()| {
+            artifact
+                .source_map
+                .as_deref()
+                .map(|json| frontend.read_map(json))
+                .transpose()
+        });
+        match map {
+            Ok(map) => Ok(Some(Body::Bytecode(Bytecode {
+                bytes: artifact.bytes.clone(),
+                map,
+            }))),
+            Err(_) if !source.is_empty() => Ok(None),
+            Err(why) => Err(why),
+        }
+    }
 }
 
 /// Host error codes whose message is a sentence written for the script's
@@ -191,14 +232,14 @@ impl Project {
             let body = self.body.borrow_mut().take()?;
             return Some(self.declare(ctx, name, body));
         }
-        let module = self.answered.borrow().get(name).cloned()?;
+        let module = self.answered.borrow_mut().remove(name)?;
         let declared = self
             .body_of(ctx, &module)
             .and_then(|body| self.declare(ctx, name, body));
         // A module that failed to compile stays answered, so a script that
         // catches the failure and imports it again hears the same failure.
-        if declared.is_ok() {
-            self.answered.borrow_mut().remove(name);
+        if declared.is_err() {
+            self.answered.borrow_mut().insert(name.to_string(), module);
         }
         Some(declared)
     }
@@ -206,22 +247,10 @@ impl Project {
     /// A local module as the loader declares it: its bytecode when this
     /// build wrote it, its source through the front end otherwise.
     fn body_of<'js>(&self, ctx: &Ctx<'js>, module: &ResolvedModule) -> Result<Body> {
-        if let Some(artifact) = &module.artifact {
-            match crate::artifact::usable(artifact) {
-                Ok(()) => {
-                    let map = match &artifact.source_map {
-                        Some(json) => Some(self.frontend.read_map(json).map_err(|why| {
-                            throw_error(ctx, &format!("module '{}': {why}", module.id))
-                        })?),
-                        None => None,
-                    };
-                    return Ok(Body::Bytecode(artifact.bytes.clone(), map));
-                }
-                Err(why) if module.source.is_empty() => {
-                    return Err(throw_error(ctx, &format!("module '{}': {why}", module.id)))
-                }
-                Err(_) => {}
-            }
+        match Body::from_artifact(self.frontend, module.artifact.as_ref(), &module.source) {
+            Ok(Some(body)) => return Ok(body),
+            Ok(None) => {}
+            Err(why) => return Err(throw_error(ctx, &format!("module '{}': {why}", module.id))),
         }
         match self.frontend.prepare(&module.source) {
             Ok(prepared) => Ok(Body::Source(prepared)),
@@ -250,12 +279,19 @@ impl Project {
         body: Body,
     ) -> Result<Module<'js, Declared>> {
         match body {
-            Body::Bytecode(bytes, map) => {
+            Body::Bytecode(Bytecode { bytes, map }) => {
                 self.chunks.borrow_mut().insert(name, map);
-                // SAFETY: QuickJS does not verify bytecode. These bytes came
-                // from the host, which hands back only artifacts this
-                // interpreter's own `validate` wrote, and `artifact::usable`
-                // has checked they are this engine's.
+                // SAFETY: QuickJS does not verify bytecode, and
+                // `Module::load` checks only in a debug assertion that the
+                // bytes decode to a module before treating the value as
+                // one, so they must be a module this engine wrote. They
+                // reach here only through `Body::from_artifact`, which has
+                // checked with `artifact::usable` that they are this
+                // engine's format. That they are a module this interpreter's
+                // own `validate` wrote rests on the host: it hands back an
+                // artifact only to the interpreter whose id it was stamped
+                // with, which matters because JavaScript and TypeScript share
+                // one engine stamp.
                 let module = unsafe { Module::load(ctx.clone(), &bytes) }?;
                 let compiled_as: String = module.name()?;
                 if compiled_as != name {
