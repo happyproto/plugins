@@ -330,7 +330,7 @@ mod probes {
         let input = ExecuteInput {
             source,
             artifact: None,
-            chunk_name: "script".to_string(),
+            chunk_name: crate::chunk::DEFAULT.to_string(),
             kind: ScriptKind::XrpcQuery,
             input: serde_json::json!({}),
             context: ExecuteContext {
