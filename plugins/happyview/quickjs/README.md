@@ -216,15 +216,6 @@ Absent, and each for its own reason:
   rather than deleted, so `instanceof Function` and `.constructor` still
   behave; calling one throws an `EvalError`.
 
-`removed_globals`, the host's list of HappyView v2's Lua globals, is not read:
-no script in a QuickJS language predates v3, so there is nothing for the migration
-sentence to send anyone to, and reading an undeclared name in a module is
-already a `ReferenceError` naming it.
-
-**There is no timezone in the guest.** The host gives it no environment, so
-`Date` reads and writes UTC. The engine's test suite, and each plugin's,
-therefore runs under `TZ=UTC`, where a native run matches the module.
-
 A script never evaluates bytecode. `eval` and the `Function` constructors are
 closed, `quickjs-libc` (and with it `qjs:bjson`) is never compiled in, and a
 specifier containing `:` is refused. The one route bytecode takes into a run
@@ -235,14 +226,24 @@ it, and `execute` loads it instead of compiling the source. An artifact from
 another build is never loaded: the source runs instead, or the run fails
 naming both builds.
 
+`removed_globals`, the host's list of HappyView v2's Lua globals, is not read:
+no script in a QuickJS language predates v3, so there is nothing for the
+migration sentence to send anyone to, and reading an undeclared name in a
+module is already a `ReferenceError` naming it.
+
+**There is no timezone in the guest.** The host gives it no environment, so
+`Date` reads and writes UTC. The engine's test suite, and each plugin's,
+therefore runs under `TZ=UTC`, where a native run matches the module.
+
 ## The three budgets, and the two the host owns
 
-**Instructions — the engine's.** QuickJS checks for an interrupt at every
-loop back-edge and call, and asks the engine once every 10,000 checks;
-`limits.instructions` is counted in checks. Once spent it stays spent, and the interrupt is **uncatchable**: `catch`
-and `finally` are skipped, an `async` function's promise never settles, and a
-run that somehow reaches a normal return afterwards fails as a timeout anyway.
-A job run is exempt, which is what `should_stop` is for.
+**Instructions — the engine's.** QuickJS checks for an interrupt at every loop
+back-edge and call, and asks the engine once every 10,000 checks;
+`limits.instructions` is counted in checks. Once spent it stays spent, and the
+interrupt is **uncatchable**: `catch` and `finally` are skipped, an `async`
+function's promise never settles, and a run that somehow reaches a normal
+return afterwards fails as a timeout anyway. A job run is exempt, which is
+what `should_stop` is for.
 
 **Memory — the engine's.** `limits.memory_bytes` is a ceiling on QuickJS's
 own allocations, counted by the engine's allocator, so exhausting it fails
@@ -270,9 +271,10 @@ the engine's ceiling cannot see.
 A failure's `message` is an error's own message, prefixed by its name unless
 that is plain `Error` — `throw new Error("boom")` reads as `boom`, a property
 read of `undefined` as `TypeError: cannot read property 'x' of undefined`. Its
-`chunk` and `line` are the innermost frame in project code — the script, or a local module, by its path — so an error a library call
-raised is placed at the line that made the call. `raw` keeps the name, the
-message and the whole stack for the event log.
+`chunk` and `line` are the innermost frame in project code — the script, or a
+local module, by its path — so an error a library call raised is placed at the
+line that made the call. `raw` keeps the name, the message and the whole stack
+for the event log.
 
 A compile failure is `syntax` only when it is a `SyntaxError`; an import that
 nothing serves is found while compiling, and is `runtime`, as a `require`
@@ -283,24 +285,24 @@ engine cannot run — refuses it before QuickJS sees it: `validate` answers
 every refusal, each on its line, and a run fails as the first, with all of
 them in `raw`. A front end that rewrites the script hands back a source map,
 and every position the engine reports passes through it on the way out —
-`line`, each frame in a project module in `raw`, compile errors and validate errors
-alike — so a failure is always placed in the source the author wrote. A
+`line`, each frame in a project module in `raw`, compile errors and validate
+errors alike — so a failure is always placed in the source the author wrote. A
 position the map does not cover keeps the one QuickJS reported.
 
 `validate` compiles the module and evaluates file scope with every import a
 stub — a value whose every property is a function returning another stub — so
 a chain of any shape at file scope evaluates without a host, and a named
 import of any name is satisfied. Only a handler needs a default export, and it
-must be a function; a file validated as a module needs none.
-With `prepare` set it also returns the bytecode artifact, and it reports the
-literal relative imports the script makes so the host can check that each
-file exists.
+must be a function; a file validated as a module or a test needs none. It
+always reports the literal relative imports the script makes, so the host can
+check that each file exists, and with `prepare` set it also returns the
+bytecode artifact.
 
 ## Permissions
 
 Five, declared by every plugin built on the engine, and what each one grants,
-in the words the install page shows. They are
-copied from `PluginCapability::consent_sentence` in HappyView's
+in the words the install page shows. They are copied from
+`PluginCapability::consent_sentence` in HappyView's
 `src/plugin/capabilities.rs`, which is the only place they are defined; no
 test spans the two repositories, so a change there has to be brought here by
 hand.
@@ -314,9 +316,10 @@ hand.
 | `wasi:stdio` | Write to this instance's plugin log. |
 
 The clock is what `Date` and `internal.time` read; randomness is what a TID's
-clock id needs; and the log is where the engine's own diagnostics would go. The module's import section is checked against these
-five at load, so it can reach nothing else. Running calls at once needs no
-sixth: it reaches nothing a script could not reach one call at a time.
+clock id needs; and the log is where the engine's own diagnostics would go.
+The module's import section is checked against these five at load, so it can
+reach nothing else. Running calls at once needs no sixth: it reaches nothing a
+script could not reach one call at a time.
 
 ## Building
 
