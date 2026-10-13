@@ -62,7 +62,7 @@ pub fn install(lua: &Lua, chunk_name: &str, resolver: Box<dyn Resolver>) -> LuaR
 }
 
 pub fn require(lua: &Lua, specifier: &str) -> LuaResult<Value> {
-    let caller = caller(lua);
+    let caller = caller(lua)?;
     let referrer = caller.name.clone();
     let loaded: Table = lua.named_registry_value(LOADED_KEY)?;
     let loading: Table = lua.named_registry_value(LOADING_KEY)?;
@@ -185,8 +185,8 @@ impl Caller {
 /// The nearest frame whose source is a script's or a module's. C frames
 /// (`pcall`, a wrapped coroutine) and the plugin's own `=`-named chunks are
 /// stepped over, so the importer is the file the call is written in however
-/// the call is reached.
-fn caller(lua: &Lua) -> Caller {
+/// the call is reached. A `require` with no such frame is an error.
+fn caller(lua: &Lua) -> LuaResult<Caller> {
     let mut level = 0;
     while let Some((source, line)) = lua.inspect_stack(level, |debug| {
         (
@@ -195,20 +195,19 @@ fn caller(lua: &Lua) -> Caller {
         )
     }) {
         if let Some(name) = source.as_deref().and_then(chunk::name_of_source) {
-            return Caller {
+            return Ok(Caller {
                 name: name.to_string(),
                 line,
-            };
+            });
         }
         level += 1;
     }
-    Caller {
-        name: lua
-            .app_data_ref::<Modules>()
-            .map(|modules| modules.chunk_name.clone())
-            .unwrap_or_else(|| chunk::DEFAULT.to_string()),
-        line: None,
-    }
+    // Nothing on the stack is a script's: `require` itself is the body of a
+    // coroutine or task. Guessing the entry chunk would resolve the specifier
+    // against the wrong directory and could load a different file there.
+    Err(mlua::Error::runtime(
+        "a relative require must be written in a script or module; call require directly rather than passing it to a coroutine or task",
+    ))
 }
 
 /// Every chunk name an error in this run can carry, longest first so a path
@@ -387,6 +386,33 @@ mod tests {
             "../shared".to_string(),
             "src/lexicons/app/test/lib/a.lua".to_string()
         )));
+    }
+
+    #[test]
+    fn a_require_with_no_script_frame_is_refused_rather_than_resolved_against_the_entry_chunk() {
+        // `f.lua` sits beside the module and not beside the handler, so a
+        // guess at the entry chunk would find nothing, and one at the module
+        // would find it: the error is the only thing that is right.
+        let files = Files::new(&[
+            ("src/lexicons/app/test/lib/f.lua", "return 'f'"),
+            (
+                "src/lexicons/app/test/lib/m.lua",
+                "return { get = function() return coroutine.wrap(require)('./f') end }",
+            ),
+        ]);
+        let output = run(
+            &files,
+            "local m = require('./lib/m')\n\
+             function handle()\n\
+               local ok, err = pcall(m.get)\n\
+               return { ok, tostring(err):match('call require directly') }\n\
+             end",
+        );
+        assert_eq!(value(output), json!([false, "call require directly"]));
+        assert!(
+            !files.asked.borrow().iter().any(|(s, _)| s == "./f"),
+            "the host was asked to resolve a specifier nobody wrote"
+        );
     }
 
     #[test]
