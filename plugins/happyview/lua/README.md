@@ -138,6 +138,15 @@ namespace it declares. An unknown name raises and names the plugin that would
 serve it. Each name resolves once per run, so a module handed out twice is the
 same table.
 
+A name starting with `./` or `../` is a **local module**: a `.lua` file in the
+same project, resolved by the host against the importing file's path. The
+importing file is the one the `require` call is written in, however the call
+is reached. A module is evaluated once per run, however many files require
+it, and whatever it returns is what `require` answers (`true` when it returns
+nothing, as in Lua). A script saved in the dashboard has no project, so a
+relative `require` there fails with the host's explanation. Two modules that
+require each other fail naming the cycle rather than recursing.
+
 A library's exports arrive under their own names. A plain export is a
 function. A *constructor* export returns an object whose methods chain —
 each one accumulating a step and returning the object — until a method that
@@ -189,6 +198,22 @@ Absent, and each for its own reason:
   `os.tmpname`, `os.setlocale`** — the `os` a script gets is `time`, `date`
   and `difftime`, and nothing else. It is an allow-list, so a function a later
   Lua adds to the library is absent until someone names it.
+
+A script never loads bytecode. `load`, `loadfile` and `dofile` are absent,
+every source text — a script's and a module's — is loaded in text mode, and
+`string.dump`'s output has nowhere to go. The one route bytecode takes into a
+VM is a **prepared artifact** the host supplies: `validate` with `prepare` set
+dumps the compiled chunk with its debug information kept
+(`format: "lua-bytecode"`, `engine: "puc-lua-5.4.8"`), and `execute` loads it
+instead of parsing the source. An artifact from another release is never
+loaded: the source runs instead, or the run fails naming both releases.
+
+A chunk is named by its path, so an error in a project file reads
+`src/lexicons/app/test/q.lua:12: …` and its `chunk` and `line` say the same. A
+dashboard script keeps the name `script` and the `[string "script"]:12:`
+rendering it always had. `validate` also reports every literal relative
+`require` with its line, so the host can report a missing module when the file
+is saved.
 
 The three that remain are **Lua's own C functions**, not a reimplementation,
 so their output, their normalisation and their error messages are PUC's.
@@ -244,7 +269,7 @@ hand.
 | capability | grants |
 | --- | --- |
 | `library:call` | Call other installed library plugins, which run with their own permissions (not this plugin's). |
-| `script:host` | Log, report progress, check for a stop request and wait on behalf of the script run it is inside; the host supplies the run's identity and job. |
+| `script:host` | Log, report progress, check for a stop request, wait, and load the project's own modules on behalf of the script run it is inside; the host supplies the run's identity, job and files. |
 | `wasi:clock` | Read the wall clock. |
 | `wasi:random` | Read secure random numbers. |
 | `wasi:stdio` | Write to this instance's plugin log. |
@@ -298,7 +323,9 @@ opening a Lua library does not unlink it.
 sandbox, the `os` subset against Lua 5.4's recorded output, the JSON rules,
 the bridge's chained documents, the `internal.async` scheduler against a host
 that settles calls in an order it chooses, `ctx`, the budgets, the error
-contract, the 84-file conformance corpus and the 257 Lua 5.4 probes. It also reads the built
+contract, the 84-file conformance corpus and the 257 Lua 5.4 probes, chunk names and
+positions, prepared artifacts, the literal-`require` lexer, and local modules
+against a project held in memory. It also reads the built
 module's import and export sets, when one has been built.
 
 What needs a host lives in HappyView: `tests/lua_interpreter_plugin.rs` loads
