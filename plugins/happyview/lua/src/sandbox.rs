@@ -3,11 +3,6 @@
 
 use mlua::{Lua, LuaOptions, Result as LuaResult, StdLib};
 
-/// The name every script chunk is loaded under. Lua renders an error in a
-/// named chunk as `[string "script"]:12: message`, which is what the `line`
-/// field is read out of; an unnamed chunk yields no line at all.
-pub const CHUNK_NAME: &str = "script";
-
 /// The libraries the sandbox keeps. `io`, `os`, `package` and `debug` are
 /// never opened rather than opened and deleted, which is also what keeps
 /// their C translation units — and the filesystem and process imports the
