@@ -141,8 +141,8 @@ same table.
 A name starting with `./` or `../` is a **local module**: a `.lua` file in the
 same project, resolved by the host against the importing file's path. The
 importing file is the one the `require` call is written in, however the call
-is reached. A module is evaluated once per run, however many files require
-it, and whatever it returns is what `require` answers (`true` when it returns
+is reached. A module is evaluated once it has loaded, however many files require
+it (a module whose file scope failed runs again on the next `require`), and whatever it returns is what `require` answers (`true` when it returns
 nothing, as in Lua). A script saved in the dashboard has no project, so a
 relative `require` there fails with the host's explanation. Two modules that
 require each other fail naming the cycle rather than recursing.
@@ -205,14 +205,16 @@ every source text — a script's and a module's — is loaded in text mode, and
 VM is a **prepared artifact** the host supplies: `validate` with `prepare` set
 dumps the compiled chunk with its debug information kept
 (`format: "lua-bytecode"`, `engine: "puc-lua-5.4.8"`), and `execute` loads it
-instead of parsing the source. An artifact from another release is never
-loaded: the source runs instead, or the run fails naming both releases.
+instead of parsing the source. An artifact is never loaded unless this release
+wrote it for this exact chunk: one from another release, one compiled for
+another chunk, and a damaged one are all refused, and the source runs instead
+or the run fails naming the cause.
 
 A chunk is named by its path, so an error in a project file reads
 `src/lexicons/app/test/q.lua:12: …` and its `chunk` and `line` say the same. A
 dashboard script keeps the name `script` and the `[string "script"]:12:`
-rendering it always had. `validate` also reports every literal relative
-`require` with its line, so the host can report a missing module when the file
+rendering it always had. `validate` also reports each literal relative
+`require` (one written without escapes) with its line, so the host can report a missing module when the file
 is saved.
 
 The three that remain are **Lua's own C functions**, not a reimplementation,
