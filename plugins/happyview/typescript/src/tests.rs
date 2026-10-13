@@ -402,3 +402,28 @@ fn the_transforms_map_is_kept_and_reads_back_to_the_same_positions() {
     );
     assert!(happyview_quickjs::JavaScript.read_map("{}").is_err());
 }
+
+#[test]
+fn typescript_imports_are_the_ones_that_run_on_their_typescript_lines() {
+    let output = validate_source(&ValidateInput {
+        source: "import type { Shape } from \"./types\";\n\
+                 import { format } from \"./lib/format\";\n\
+                 enum Color { Red, Green }\n\
+                 export { helper } from \"./lib/helper\";\n\
+                 export default function handle(s: Shape): string { return format(Color.Red, s); }\n"
+            .to_string(),
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(output.valid, "{:?}", output.errors);
+    let found: Vec<(String, u32)> = output
+        .imports
+        .into_iter()
+        .map(|import| (import.specifier, import.line))
+        .collect();
+    // `import type` is erased by the transform, so it is nothing to resolve.
+    assert_eq!(
+        found,
+        vec![("./lib/format".into(), 2), ("./lib/helper".into(), 4)]
+    );
+}
