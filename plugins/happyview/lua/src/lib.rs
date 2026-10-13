@@ -10,6 +10,7 @@ mod concurrent;
 mod conformance;
 mod convert;
 mod ctx;
+mod imports;
 mod require;
 mod sandbox;
 
@@ -143,6 +144,7 @@ fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError>
     Ok(ValidateOutput {
         valid: true,
         artifact,
+        imports: imports::relative_requires(&input.source),
         ..ValidateOutput::default()
     })
 }
@@ -254,6 +256,23 @@ mod tests {
             "removed_globals": removed_globals,
         }))
         .expect("the validate input should deserialize")
+    }
+
+    #[test]
+    fn validate_reports_the_literal_relative_requires() {
+        let validated = validate_source(&validate_input(
+            "local format = require('./lib/format')\nlocal json = require('internal.json')\nfunction handle() end",
+            &[],
+        ))
+        .unwrap();
+        assert!(validated.valid);
+        assert_eq!(
+            validated.imports,
+            vec![happyview_plugin_sdk::ImportRef {
+                specifier: "./lib/format".into(),
+                line: 1
+            }]
+        );
     }
 
     fn prepared(source: &str, chunk_name: &str) -> happyview_plugin_sdk::PreparedArtifact {
