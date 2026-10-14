@@ -33,8 +33,10 @@ local ok = atproto.verify_signature(record, sig, "did:plc:abc")
 ## Byte convention
 
 `blob_download`'s `bytes` arrives as a Lua string when the blob is valid
-UTF-8, and as an array of byte values otherwise — the same rule an HTTP
-response body follows.
+UTF-8, and as `{"$bytes": "<base64>"}` otherwise — the form atproto's own
+JSON gives bytes, and the same rule an HTTP response body follows. Pass it
+on as it is: `happyview.blobs`'s `put` and `happyview.record`'s
+`upload_blob` take either form.
 
 ## Errors
 

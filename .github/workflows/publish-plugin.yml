@@ -1,0 +1,76 @@
+# Publishes a plugin release that is already on GitHub to the registry: a
+# release made before registry publishing existed, or one whose registry
+# publish failed after the release job cut it (rerunning that job finds
+# nothing new to release, so it would never try again).
+#
+# It publishes the release's own assets, the module and manifest.json that
+# people already download, rather than rebuilding at the tag, with hpy.toml
+# and the tooling from the default branch (older tags have neither). A
+# version the registry already has is skipped, so running this twice is safe.
+name: Publish a plugin release
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: The plugin, as named under plugins/happyview/
+        required: true
+        type: choice
+        options:
+          - atproto
+          - auth-itch
+          - auth-microsoft
+          - auth-steam
+          - auth-xbox
+          - backlinks
+          - blobs
+          - db
+          - http
+          - javascript
+          - jobs
+          - linked-repos
+          - lua
+          - record
+          - spaces
+          - sql
+          - typescript
+          - xrpc
+      version:
+        description: The version to publish, e.g. 1.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: depot-ubuntu-24.04
+    env:
+      DIR: plugins/happyview/${{ inputs.plugin }}
+      TAG: happyview-${{ inputs.plugin }}-v${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the release's module and manifest
+        id: module
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$DIR" --clobber \
+            --pattern '*.wasm' --pattern manifest.json
+          # The release uploads exactly one module (release/release-config.test.mjs).
+          modules=$(cd "$DIR" && ls -- *.wasm)
+          if [ "$(echo "$modules" | wc -l)" -ne 1 ]; then
+            echo "::error::expected one .wasm in $TAG, found: $modules"
+            exit 1
+          fi
+          echo "wasm=$modules" >> "$GITHUB_OUTPUT"
+
+      - uses: happyproto/actions/plugin-publish@v1
+        with:
+          version: ${{ inputs.version }}
+          credential: ${{ secrets.HPY_CREDENTIAL }}
+          working-directory: ${{ env.DIR }}
+          wasm: ${{ steps.module.outputs.wasm }}
+          hpy-channel: alpha

@@ -28,7 +28,7 @@ local result = repo:call("com.atproto.repo.listRecords", {params = {collection =
   - `put_record{collection, rkey, record, swap_cid?}` → `{uri, cid}`
   - `delete_record{collection, rkey}` → `true`
   - `upload_blob(bytes, mime_type)` → the PDS's blob ref, as-is; `bytes` is a
-    string or byte array
+    string or `{"$bytes": "<base64>"}`
   - `call(nsid[, {params, input}])` → the response
 
 `get` itself never fails — it just remembers the DID. Every method

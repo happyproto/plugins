@@ -11,15 +11,15 @@ env:
 
 jobs:
   fmt:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cargo fmt --check
 
   clippy:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup target add wasm32-unknown-unknown
       - run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
@@ -27,19 +27,19 @@ jobs:
   # beside it. A mistake there releases nothing, silently, so it is tested
   # before anything is.
   release-config:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: node --test release/*.test.mjs
 
   build:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     needs: [fmt, clippy]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
@@ -61,7 +61,7 @@ jobs:
   # not a plugin and has no module to build, so it rides with the JavaScript
   # interpreter, the plugin that runs its language unchanged.
   interpreter:
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -80,11 +80,11 @@ jobs:
             module_env: HAPPYVIEW_TYPESCRIPT_WASM
     name: interpreter (${{ matrix.crate }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache wasi-sdk
         id: wasi-sdk
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/wasi-sdk
           key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
@@ -140,7 +140,7 @@ jobs:
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build, interpreter, release-config]
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04
     permissions:
       contents: write
       issues: write
@@ -175,12 +175,12 @@ jobs:
           ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -198,13 +198,45 @@ jobs:
 
       - name: Restore wasi-sdk
         if: contains(fromJSON('["lua", "javascript", "typescript"]'), matrix.plugin)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/wasi-sdk
           key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
 
       - name: Release happyview/${{ matrix.plugin }}
+        id: release
         working-directory: plugins/happyview/${{ matrix.plugin }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx --yes semantic-release
+
+      # Not semantic-release-export-data's new-release-version: the monorepo
+      # wrappers hand its generateNotes the tag in place of the version. The
+      # tag is exact, and prepareCmd wrote the same version to manifest.json.
+      - name: Read the released version
+        id: version
+        if: steps.release.outputs.new-release-published == 'true'
+        env:
+          DIR: plugins/happyview/${{ matrix.plugin }}
+          TAG: ${{ steps.release.outputs.new-release-git-tag }}
+        run: |
+          version=$(node release/release-config.mjs version "$DIR" "$TAG")
+          manifest=$(jq -r .version "$DIR/manifest.json")
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::$TAG names $version, but manifest.json says $manifest"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "wasm=$(node release/release-config.mjs wasm "$DIR")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish happyview/${{ matrix.plugin }} to the registry
+        if: steps.release.outputs.new-release-published == 'true'
+        uses: happyproto/actions/plugin-publish@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          credential: ${{ secrets.HPY_CREDENTIAL }}
+          working-directory: plugins/happyview/${{ matrix.plugin }}
+          wasm: ${{ steps.version.outputs.wasm }}
+          hpy-channel: alpha
