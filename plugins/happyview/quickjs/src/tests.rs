@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::backend::fake::{Fake, Order};
-use happyview_plugin_sdk::{ApiExport, ApiMethod, ApiSurface};
+use happyview_plugin_sdk::{ApiExport, ApiMethod, ApiSurface, ChunkRole};
 use serde_json::json;
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
@@ -46,6 +46,7 @@ fn validate_input(source: &str) -> ValidateInput {
     ValidateInput {
         source: source.to_string(),
         removed_globals: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -75,6 +76,7 @@ fn failure_of(output: ExecuteOutput) -> (ScriptErrorKind, String, Option<u32>, S
             message,
             line,
             raw,
+            ..
         } => (kind, message, line, raw),
         other => panic!("expected a failure, got {other:?}"),
     }
@@ -694,7 +696,8 @@ fn an_import_nothing_serves_is_refused_naming_what_would() {
     let path_refusal = |name: &str| {
         format!(
             "cannot import '{name}': a script imports built-in modules and installed \
-             libraries by name, never a path or a URL"
+             libraries by name, and its project's own modules by a path starting with ./ or ../, \
+             never an absolute path or a URL"
         )
     };
     for (source, expected) in [
@@ -710,10 +713,6 @@ fn an_import_nothing_serves_is_refused_naming_what_would() {
                 .to_string(),
         ),
         (
-            "import x from './helper.js';\nexport default () => 1;".to_string(),
-            path_refusal("./helper.js"),
-        ),
-        (
             "import x from 'https://example.com/x.js';\nexport default () => 1;".to_string(),
             path_refusal("https://example.com/x.js"),
         ),
@@ -726,6 +725,16 @@ fn an_import_nothing_serves_is_refused_naming_what_would() {
         assert_eq!(kind, ScriptErrorKind::Runtime, "{source}");
         assert_eq!(message, expected, "{source}");
     }
+
+    // A relative path is the host's to answer, and off wasm the host is not
+    // there to answer it.
+    let (_, message, ..) = failure_of(run_bounded(execute_input(
+        "import x from './helper.js';\nexport default () => 1;",
+    )));
+    assert!(
+        message.starts_with("cannot resolve './helper.js':"),
+        "{message}"
+    );
 }
 
 /// A library may not take an `internal.` name, whichever order the two
@@ -805,6 +814,94 @@ fn console_reaches_the_log() {
 
 // --- validate -------------------------------------------------------------
 
+fn validate_with(source: &str, chunk_name: &str, prepare: bool, module: bool) -> ValidateOutput {
+    let mut input = validate_input(source);
+    input.chunk_name = Some(chunk_name.to_string());
+    input.prepare = prepare;
+    input.role = if module {
+        ChunkRole::Module
+    } else {
+        ChunkRole::Handler
+    };
+    validate_source(&input).unwrap()
+}
+
+#[test]
+fn validate_prepares_only_when_asked_and_only_what_is_valid() {
+    let source = "export default () => 1;";
+    assert!(validate_with(source, "script", false, false)
+        .artifact
+        .is_none());
+    assert!(validate_with("export default (", "script", true, false)
+        .artifact
+        .is_none());
+    let artifact = validate_with(source, "script", true, false)
+        .artifact
+        .expect("a valid, prepared script carries its artifact");
+    assert_eq!(artifact.format, "quickjs-bytecode");
+    assert_eq!(artifact.source_map, None);
+    assert!(!artifact.bytes.is_empty());
+}
+
+#[test]
+fn a_relative_import_is_a_stub_while_validating() {
+    let validated = validate_with(
+        "import { format } from './lib/format.js';\nimport helper from '../helper.js';\nexport default () => format(helper);",
+        "src/lexicons/app/test/q.js",
+        true,
+        false,
+    );
+    assert!(validated.valid, "{:?}", validated.errors);
+}
+
+#[test]
+fn a_module_validates_without_a_default_export() {
+    let source = "export function shout(s) { return s.toUpperCase(); }";
+    assert_eq!(
+        validate_with(source, "lib/m.js", true, false).errors[0].kind,
+        ScriptErrorKind::MissingHandle
+    );
+    let validated = validate_with(source, "lib/m.js", true, true);
+    assert!(validated.valid, "{:?}", validated.errors);
+    assert!(validated.artifact.is_some());
+}
+
+#[test]
+fn the_libc_bytecode_module_is_not_importable() {
+    for source in [
+        "import * as bjson from 'qjs:bjson';\nexport default () => 1;",
+        "export default async () => (await import('qjs:bjson')).read;",
+    ] {
+        let (kind, message, ..) = failure_of(run_bounded(execute_input(source)));
+        assert_eq!(kind, ScriptErrorKind::Runtime, "{source}");
+        assert!(
+            message.starts_with("cannot import 'qjs:bjson'"),
+            "{source}: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_path_or_a_url_is_still_refused_while_validating() {
+    for name in ["/etc/passwd", "https://example.com/x.js", ".hidden"] {
+        let validated = validate_with(
+            &format!("import x from '{name}';\nexport default () => x;"),
+            "script",
+            true,
+            false,
+        );
+        assert!(!validated.valid, "{name}");
+        assert!(validated.artifact.is_none(), "{name}");
+        assert!(
+            validated.errors[0]
+                .message
+                .contains(&format!("cannot import '{name}'")),
+            "{name}: {:?}",
+            validated.errors
+        );
+    }
+}
+
 #[test]
 fn validate_refuses_what_a_run_refuses() {
     for (source, expected) in [
@@ -819,7 +916,7 @@ fn validate_refuses_what_a_run_refuses() {
             ScriptErrorKind::Runtime,
         ),
         (
-            "import x from './y.js';\nexport default () => 1;",
+            "import x from '/y.js';\nexport default () => 1;",
             ScriptErrorKind::Runtime,
         ),
         (
@@ -925,6 +1022,7 @@ fn a_front_end_refusal_is_the_scripts_failure_in_both_exports() {
             message: "first".to_string(),
             line: Some(3),
             raw: "line 3: first\nsecond".to_string(),
+            chunk: None,
         }
     );
 }
@@ -948,21 +1046,27 @@ impl Frontend for Shifting {
         Ok(Prepared {
             code: format!("\n\n{source}"),
             map: Some(SourceMap::new(mappings)),
+            source_map: None,
         })
     }
 }
 
 #[test]
 fn every_position_an_error_reports_is_the_authors() {
-    let (kind, _, line, raw) = failure_of(
-        execute(
-            &Shifting,
-            &execute_input(
-                "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
-            ),
-        )
-        .unwrap(),
+    let output = execute(
+        &Shifting,
+        &execute_input(
+            "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
+        ),
+    )
+    .unwrap();
+    // A dashboard script's chunk is the default name, which a failure
+    // leaves out rather than naming a file the author never saw.
+    assert!(
+        matches!(&output, ExecuteOutput::Error { chunk: None, .. }),
+        "{output:?}"
     );
+    let (kind, _, line, raw) = failure_of(output);
     assert_eq!(kind, ScriptErrorKind::Runtime);
     assert_eq!(line, Some(3), "{raw}");
     assert!(raw.contains("at handle (script:3:1)"), "{raw}");
@@ -979,4 +1083,457 @@ fn every_position_an_error_reports_is_the_authors() {
     )
     .unwrap();
     assert_eq!(validated.errors[0].line, Some(2), "{:?}", validated.errors);
+}
+
+#[test]
+fn an_error_names_the_file_it_is_in() {
+    let mut input = execute_input(
+        "export default function handle() {\n  const t = undefined;\n  return t.x;\n}",
+    );
+    input.chunk_name = "src/lexicons/app/test/q.js".to_string();
+    match run_bounded(input) {
+        ExecuteOutput::Error {
+            chunk, line, raw, ..
+        } => {
+            assert_eq!(
+                chunk.as_deref(),
+                Some("src/lexicons/app/test/q.js"),
+                "{raw}"
+            );
+            assert_eq!(line, Some(3), "{raw}");
+            assert!(
+                raw.contains("at handle (src/lexicons/app/test/q.js:3:"),
+                "{raw}"
+            );
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn validate_reports_the_literal_relative_imports() {
+    let validated = validate_with(
+        "import { format } from './lib/format.js';\nimport json from 'internal.json';\nexport default async () => (await import('../late.js')).x;",
+        "script",
+        false,
+        false,
+    );
+    assert!(validated.valid, "{:?}", validated.errors);
+    let found: Vec<(String, u32)> = validated
+        .imports
+        .into_iter()
+        .map(|import| (import.specifier, import.line))
+        .collect();
+    assert_eq!(
+        found,
+        vec![("./lib/format.js".into(), 1), ("../late.js".into(), 3)]
+    );
+}
+
+// --- prepared artifacts ---------------------------------------------------
+
+fn prepared_artifact(source: &str, chunk_name: &str) -> happyview_plugin_sdk::PreparedArtifact {
+    let validated = validate_with(source, chunk_name, true, false);
+    assert!(validated.valid, "{:?}", validated.errors);
+    validated.artifact.expect("an artifact")
+}
+
+#[test]
+fn a_run_from_the_artifact_needs_no_source_and_keeps_its_positions() {
+    let name = "src/jobs/x.js";
+    let artifact = prepared_artifact(
+        "import json from 'internal.json';\nexport default function handle(input) {\n  if (input.fail) throw new Error('boom');\n  return { encoded: json.encode({ a: 1 }) };\n}\n",
+        name,
+    );
+    let mut sent = input("", json!({ "chunk_name": name }));
+    sent.artifact = Some(artifact);
+    assert_eq!(
+        returned(execute_script(&sent).unwrap()).0,
+        json!({ "encoded": r#"{"a":1}"# })
+    );
+
+    sent.input = json!({ "fail": true });
+    match execute_script(&sent).unwrap() {
+        ExecuteOutput::Error {
+            chunk,
+            line,
+            message,
+            ..
+        } => {
+            assert_eq!(chunk.as_deref(), Some(name));
+            assert_eq!(line, Some(3));
+            assert_eq!(message, "boom");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_artifact_this_build_cannot_load_falls_back_to_the_source_or_fails_by_name() {
+    let mut artifact = prepared_artifact("export default () => 'from bytecode';", "script");
+    artifact.engine = "quickjs-ng-0.10.0".to_string();
+    let mut sent = execute_input("export default () => 'from source';");
+    sent.artifact = Some(artifact);
+    assert_eq!(
+        returned(execute_script(&sent).unwrap()).0,
+        json!("from source")
+    );
+
+    sent.source = String::new();
+    let refused = execute_script(&sent).unwrap_err();
+    assert_eq!(refused.code, "INTERPRETER_ERROR");
+    assert!(
+        refused.message.contains("quickjs-ng-0.10.0"),
+        "{}",
+        refused.message
+    );
+}
+
+/// JavaScript's front end reads no map, so an artifact carrying one is an
+/// artifact whose map cannot be read.
+#[test]
+fn an_artifact_whose_map_cannot_be_read_falls_back_to_the_source_or_fails() {
+    let mut artifact = prepared_artifact("export default () => 'from bytecode';", "script");
+    artifact.source_map = Some("{}".to_string());
+    let mut sent = execute_input("export default () => 'from source';");
+    sent.artifact = Some(artifact.clone());
+    assert_eq!(
+        returned(execute_script(&sent).unwrap()).0,
+        json!("from source")
+    );
+
+    sent.source = String::new();
+    let refused = execute_script(&sent).unwrap_err();
+    assert_eq!(refused.code, "INTERPRETER_ERROR");
+    assert!(
+        refused.message.contains("source map"),
+        "{}",
+        refused.message
+    );
+
+    let id = "src/lexicons/app/test/m.js";
+    let (output, _) = run_project(
+        fake().module_artifact(id, "export default 'source';", artifact.clone()),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    assert_eq!(returned(output).0, json!("source"));
+    let (output, _) = run_project(
+        fake().module_artifact(id, "", artifact),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    let (_, message, ..) = failure_of(output);
+    assert!(
+        message.contains(id) && message.contains("source map"),
+        "{message}"
+    );
+}
+
+#[test]
+fn an_artifact_compiled_under_another_name_is_refused() {
+    let artifact = prepared_artifact("export default () => 1;", "src/a.js");
+    let mut sent = input("", json!({ "chunk_name": "src/b.js" }));
+    sent.artifact = Some(artifact);
+    let (kind, message, ..) = failure_of(execute_script(&sent).unwrap());
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert_eq!(
+        message,
+        "the prepared artifact for 'src/b.js' was compiled as 'src/a.js'"
+    );
+}
+
+#[test]
+fn a_script_with_top_level_await_runs_from_its_artifact() {
+    let artifact = prepared_artifact(
+        "import db from 'happyview.db';\nconst first = await db.get('x');\nexport default () => first;",
+        "script",
+    );
+    let (output, _) = run_with(
+        echo(fake()),
+        "",
+        json!({ "artifact": serde_json::to_value(&artifact).unwrap() }),
+    );
+    assert_eq!(
+        returned(output).0,
+        json!({ "via": "happyview-db.get", "args": ["x"] })
+    );
+}
+
+/// QuickJS does not verify bytecode, so bytes reach its reader only from an
+/// artifact stamped by this build. Source text whose characters are this
+/// build's bytecode is compiled as source, and fails as source does, rather
+/// than being read.
+#[test]
+fn source_text_carrying_bytecode_is_compiled_never_read() {
+    let artifact = prepared_artifact("export default () => 'from bytecode';", "script");
+    let source: String = artifact.bytes.iter().map(|&byte| byte as char).collect();
+    let (kind, message, ..) = failure_of(execute_script(&execute_input(&source)).unwrap());
+    assert!(
+        matches!(kind, ScriptErrorKind::Syntax | ScriptErrorKind::Runtime),
+        "{kind:?}: {message}"
+    );
+}
+
+/// Bytes that would fault QuickJS's reader are never handed to it when the
+/// stamp is not this build's, whichever half of the stamp is wrong.
+#[test]
+fn an_artifact_whose_stamp_mismatches_is_never_read() {
+    let garbage = vec![0xff; 64];
+    let stamped = artifact::prepared(garbage.clone(), None);
+    let mut other_format = stamped.clone();
+    other_format.format = "lua-bytecode".to_string();
+    let mut other_engine = stamped;
+    other_engine.engine = "quickjs-ng-0.10.0".to_string();
+
+    for (artifact, named) in [
+        (other_format, "lua-bytecode"),
+        (other_engine, "quickjs-ng-0.10.0"),
+    ] {
+        let mut sent = execute_input("export default () => 'from source';");
+        sent.artifact = Some(artifact);
+        assert_eq!(
+            returned(execute_script(&sent).unwrap()).0,
+            json!("from source")
+        );
+
+        sent.source = String::new();
+        let refused = execute_script(&sent).unwrap_err();
+        assert_eq!(refused.code, "INTERPRETER_ERROR");
+        assert!(refused.message.contains(named), "{}", refused.message);
+    }
+}
+
+// --- local modules ----------------------------------------------------------
+
+const HANDLER: &str = "src/lexicons/app/test/q.js";
+
+fn run_project(fake: Fake, source: &str) -> (ExecuteOutput, Rc<Fake>) {
+    run_with(fake, source, json!({ "chunk_name": HANDLER }))
+}
+
+#[test]
+fn a_script_imports_a_module_by_a_relative_path() {
+    let (output, fake) = run_project(
+        fake().module(
+            "src/lexicons/app/test/lib/format.js",
+            "export function shout(s) { return s.toUpperCase(); }\nexport default { shout };",
+        ),
+        "import { shout } from './lib/format.js';\nimport fmt from './lib/format';\nexport default () => [shout('hi'), fmt.shout === shout];",
+    );
+    assert_eq!(returned(output).0, json!(["HI", true]));
+    assert_eq!(
+        fake.resolved.borrow().as_slice(),
+        &[
+            ("./lib/format.js".to_string(), HANDLER.to_string()),
+            ("./lib/format".to_string(), HANDLER.to_string()),
+        ]
+    );
+}
+
+#[test]
+fn a_module_is_evaluated_once_and_asked_for_once_per_importer() {
+    let (output, fake) = run_project(
+        fake()
+            .module(
+                "src/lexicons/app/test/shared.js",
+                "globalThis.loads = (globalThis.loads ?? 0) + 1;\nexport const id = {};",
+            )
+            .module(
+                "src/lexicons/app/test/lib/a.js",
+                "export { id } from '../shared.js';",
+            )
+            .module(
+                "src/lexicons/app/test/lib/b.js",
+                "export { id } from '../shared.js';",
+            ),
+        "import { id as a } from './lib/a.js';\nimport { id as b } from './lib/b.js';\nimport { id as c } from './shared.js';\n\
+         export default () => ({ loads: globalThis.loads, same: a === b && b === c });",
+    );
+    assert_eq!(returned(output).0, json!({ "loads": 1, "same": true }));
+    let resolved = fake.resolved.borrow();
+    assert!(resolved.contains(&(
+        "../shared.js".to_string(),
+        "src/lexicons/app/test/lib/a.js".to_string()
+    )));
+    let unique: std::collections::BTreeSet<_> = resolved.iter().collect();
+    assert_eq!(
+        unique.len(),
+        resolved.len(),
+        "a pair was asked twice: {resolved:?}"
+    );
+}
+
+/// QuickJS resolves a static import once per module, so only an `import()`
+/// run twice reaches the resolver twice with the same pair.
+#[test]
+fn a_repeated_dynamic_import_asks_the_host_once() {
+    let (output, fake) = run_project(
+        fake().module("src/lexicons/app/test/v.js", "export default 7;"),
+        "import v from './v.js';\n\
+         export default async () => [v, (await import('./v.js')).default, (await import('./v.js')).default];",
+    );
+    assert_eq!(returned(output).0, json!([7, 7, 7]));
+    let pair = ("./v.js".to_string(), HANDLER.to_string());
+    let asked = fake
+        .resolved
+        .borrow()
+        .iter()
+        .filter(|asked| **asked == pair)
+        .count();
+    assert_eq!(asked, 1, "{:?}", fake.resolved.borrow());
+}
+
+/// The same specifier from two directories is two modules: each importer
+/// resolves against its own location.
+#[test]
+fn one_specifier_from_two_importers_names_two_modules() {
+    let (output, fake) = run_project(
+        fake()
+            .module("src/lexicons/app/test/a/util.js", "export default 'a';")
+            .module("src/lexicons/app/test/b/util.js", "export default 'b';")
+            .module(
+                "src/lexicons/app/test/a/index.js",
+                "export { default } from './util.js';",
+            )
+            .module(
+                "src/lexicons/app/test/b/index.js",
+                "export { default } from './util.js';",
+            ),
+        "import a from './a/index.js';\nimport b from './b/index.js';\nexport default () => [a, b];",
+    );
+    assert_eq!(returned(output).0, json!(["a", "b"]));
+    let resolved = fake.resolved.borrow();
+    for importer in ["a", "b"] {
+        assert!(
+            resolved.contains(&(
+                "./util.js".to_string(),
+                format!("src/lexicons/app/test/{importer}/index.js")
+            )),
+            "{resolved:?}"
+        );
+    }
+}
+
+#[test]
+fn modules_that_import_each_other_work_as_es_modules_do() {
+    let (output, _) = run_project(
+        fake()
+            .module(
+                "src/lexicons/app/test/even.js",
+                "import { odd } from './odd.js';\nexport const even = (n) => n === 0 || odd(n - 1);",
+            )
+            .module(
+                "src/lexicons/app/test/odd.js",
+                "import { even } from './even.js';\nexport const odd = (n) => n !== 0 && even(n - 1);",
+            ),
+        "import { even } from './even.js';\nexport default () => [even(4), even(3)];",
+    );
+    assert_eq!(returned(output).0, json!([true, false]));
+}
+
+#[test]
+fn a_dynamic_import_resolves_against_the_module_it_is_written_in() {
+    let (output, fake) = run_project(
+        fake()
+            .module(
+                "src/lexicons/app/test/lib/late.js",
+                "export const load = () => import('./value.js');",
+            )
+            .module("src/lexicons/app/test/lib/value.js", "export default 42;"),
+        "import { load } from './lib/late.js';\nexport default async () => (await load()).default;",
+    );
+    assert_eq!(returned(output).0, json!(42));
+    assert!(fake.resolved.borrow().contains(&(
+        "./value.js".to_string(),
+        "src/lexicons/app/test/lib/late.js".to_string()
+    )));
+}
+
+#[test]
+fn a_miss_fails_with_the_hosts_sentence() {
+    let (output, _) = run_project(
+        fake(),
+        "import x from './nope.js';\nexport default () => x;",
+    );
+    let (kind, message, ..) = failure_of(output);
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert_eq!(
+        message,
+        format!("no module './nope.js' from {HANDLER}: looked for src/lexicons/app/test/nope.js")
+    );
+}
+
+#[test]
+fn an_error_inside_a_module_names_the_module_and_its_line() {
+    let (output, _) = run_project(
+        fake().module(
+            "src/lexicons/app/test/lib/format.js",
+            "export function f(t) {\n  return t.x;\n}",
+        ),
+        "import { f } from './lib/format.js';\nexport default () => f(undefined);",
+    );
+    match output {
+        ExecuteOutput::Error { chunk, line, .. } => {
+            assert_eq!(
+                chunk.as_deref(),
+                Some("src/lexicons/app/test/lib/format.js")
+            );
+            assert_eq!(line, Some(2));
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_module_runs_from_its_artifact_and_falls_back_to_source_when_it_cannot() {
+    let id = "src/lexicons/app/test/m.js";
+    let mut artifact = validate_with("export default 'bytecode';", id, true, true)
+        .artifact
+        .expect("an artifact");
+    let (output, _) = run_project(
+        fake().module_artifact(id, "", artifact.clone()),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    assert_eq!(returned(output).0, json!("bytecode"));
+
+    artifact.engine = "quickjs-ng-0.10.0".to_string();
+    let (output, _) = run_project(
+        fake().module_artifact(id, "export default 'source';", artifact.clone()),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    assert_eq!(returned(output).0, json!("source"));
+
+    let (output, _) = run_project(
+        fake().module_artifact(id, "", artifact),
+        "import m from './m.js';\nexport default () => m;",
+    );
+    let (_, message, ..) = failure_of(output);
+    assert!(message.contains("quickjs-ng-0.10.0"), "{message}");
+}
+
+#[test]
+fn a_bare_name_still_means_a_builtin_or_a_library() {
+    let (output, fake) = run_project(
+        echo(fake()),
+        "import json from 'internal.json';\nimport db from 'happyview.db';\nexport default async () => [json.encode({ a: 1 }), (await db.get('x')).via];",
+    );
+    assert_eq!(
+        returned(output).0,
+        json!([r#"{"a":1}"#, "happyview-db.get"])
+    );
+    assert!(fake.resolved.borrow().is_empty());
+}
+
+#[test]
+fn a_module_that_failed_to_compile_fails_the_same_way_when_imported_again() {
+    let (output, _) = run_project(
+        fake().module("src/lexicons/app/test/broken.js", "export const = 1;"),
+        "const attempt = () => import('./broken.js').then(() => 'loaded', (e) => String(e));\n\
+         export default async () => [await attempt(), await attempt()];",
+    );
+    let value = returned(output).0;
+    assert_eq!(value[0], value[1], "{value}");
+    assert!(
+        value[0].as_str().unwrap().starts_with("SyntaxError"),
+        "{value}"
+    );
 }

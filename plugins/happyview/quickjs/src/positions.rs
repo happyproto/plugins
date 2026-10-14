@@ -1,14 +1,15 @@
-//! Where an error happened, in the author's own source.
+//! Where an error happened, in the author's own source and file.
 //!
-//! QuickJS places an error in the module it compiled, which is the front
-//! end's output rather than what the author wrote whenever the front end
-//! rewrote anything. A front end that does hands back a [`SourceMap`] with
-//! its output, and every position the engine reports — an error's `line`,
-//! each `script:L:C` frame in its `raw` stack, a compile error, a validate
-//! error — passes through [`remap`] on its way out. With no map, every
-//! position is already the author's and passes through untouched.
+//! QuickJS places an error in the module it compiled, under the name it was
+//! compiled as: the script's chunk name, or a local module's id. A module's
+//! code is its front end's output rather than what the author wrote whenever
+//! the front end rewrote anything, so each project module is recorded here
+//! with its [`SourceMap`], and every position the engine reports — an
+//! error's `line`, each frame in its `raw` stack — passes through the map of
+//! the module it is in. A frame in any other module, a library's or a
+//! built-in's, is not the author's and is never reported as a position.
 
-use crate::sandbox;
+use std::collections::BTreeMap;
 
 /// A position in a module, as QuickJS writes one: both counts start at 1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -27,7 +28,7 @@ pub struct Mapping {
 
 /// What a front end knows about where its output came from, kept sorted by
 /// generated position so a lookup is a binary search.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct SourceMap {
     mappings: Vec<Mapping>,
 }
@@ -63,77 +64,82 @@ pub fn remap(map: Option<&SourceMap>, at: Position) -> Position {
     map.and_then(|map| map.original(at)).unwrap_or(at)
 }
 
-/// A `script:L:C` frame location at the start of `text`, and how many bytes
-/// it takes.
-fn frame_at(text: &str) -> Option<(Position, usize)> {
-    let marker = format!("{}:", sandbox::MODULE_NAME);
-    let rest = text.strip_prefix(&marker)?;
-    let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
-    let line_len = digits(rest);
-    let after_line = rest[line_len..].strip_prefix(':')?;
-    let column_len = digits(after_line);
-    if line_len == 0 || column_len == 0 {
-        return None;
-    }
-    let position = Position {
-        line: rest[..line_len].parse().ok()?,
-        column: after_line[..column_len].parse().ok()?,
-    };
-    Some((position, marker.len() + line_len + 1 + column_len))
+/// Every module a run compiled from project code, by the name QuickJS knows
+/// it as, with the map back to its author's source when it has one.
+#[derive(Debug, Default)]
+pub struct Chunks {
+    maps: BTreeMap<String, Option<SourceMap>>,
 }
 
-/// `stack` with every frame in the script's own module moved to the
-/// author's position. A frame is recognised only where QuickJS writes one,
-/// after `(` or `at `, so a library's module whose name merely ends in the
-/// script's is left alone.
-pub fn remap_frames(stack: &str, map: Option<&SourceMap>) -> String {
-    if map.is_none() {
-        return stack.to_string();
+impl Chunks {
+    pub fn insert(&mut self, name: &str, map: Option<SourceMap>) {
+        self.maps.insert(name.to_string(), map);
     }
-    let mut out = String::with_capacity(stack.len());
-    let mut rest = stack;
-    while let Some(at) = rest.find(sandbox::MODULE_NAME) {
-        let (before, candidate) = rest.split_at(at);
-        out.push_str(before);
-        let framed = before.ends_with('(') || before.ends_with("at ");
-        match frame_at(candidate).filter(|_| framed) {
-            Some((position, len)) => {
-                let position = remap(map, position);
-                out.push_str(&format!(
-                    "{}:{}:{}",
-                    sandbox::MODULE_NAME,
-                    position.line,
-                    position.column
-                ));
-                rest = &candidate[len..];
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.maps.contains_key(name)
+    }
+
+    /// A `name:L:C` frame location at the start of `text` in a project
+    /// module, its position, and how many bytes it takes. The location
+    /// starts exactly at the name, so `lib/a.js:3:1` is never read as
+    /// `a.js`.
+    fn frame_at(&self, text: &str) -> Option<(&str, Position, usize)> {
+        self.maps.keys().find_map(|name| {
+            let rest = text.strip_prefix(name.as_str())?.strip_prefix(':')?;
+            let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
+            let line_len = digits(rest);
+            let after_line = rest[line_len..].strip_prefix(':')?;
+            let column_len = digits(after_line);
+            if line_len == 0 || column_len == 0 {
+                return None;
             }
-            None => {
-                out.push_str(&candidate[..sandbox::MODULE_NAME.len()]);
-                rest = &candidate[sandbox::MODULE_NAME.len()..];
+            let line = rest[..line_len].parse().ok()?;
+            let column = after_line[..column_len].parse().ok()?;
+            let len = name.len() + 1 + line_len + 1 + column_len;
+            Some((name.as_str(), Position { line, column }, len))
+        })
+    }
+
+    /// `stack` with every frame in a project module moved to its author's
+    /// position. A frame is recognised only where QuickJS writes one, after
+    /// `(` or `at `, so a library's module whose name merely ends in a
+    /// project module's is left alone.
+    pub fn remap_frames(&self, stack: &str) -> String {
+        let mut out = String::with_capacity(stack.len());
+        let mut i = 0;
+        while i < stack.len() {
+            let framed = stack[..i].ends_with('(') || stack[..i].ends_with("at ");
+            if framed {
+                if let Some((name, at, len)) = self.frame_at(&stack[i..]) {
+                    let position = remap(self.maps.get(name).and_then(Option::as_ref), at);
+                    out.push_str(&format!("{name}:{}:{}", position.line, position.column));
+                    i += len;
+                    continue;
+                }
             }
+            let ch = stack[i..].chars().next().expect("i is on a char boundary");
+            out.push(ch);
+            i += ch.len_utf8();
         }
+        out
     }
-    out.push_str(rest);
-    out
-}
 
-/// The author's line of the innermost frame in the script's own module, from
-/// a stack QuickJS writes as `    at handle (script:12:5)` or
-/// `    at script:12:5`. A frame in a library's module or in a native
-/// function is skipped, so an error thrown by the bridge is placed at the
-/// line that called it.
-pub fn line_of(stack: &str, map: Option<&SourceMap>) -> Option<u32> {
-    let marker = format!("{}:", sandbox::MODULE_NAME);
-    stack.lines().find_map(|frame| {
-        let frame = frame.trim();
-        let location = match frame.rfind(&format!("({marker}")) {
-            Some(at) => &frame[at + 1..],
-            None => frame
-                .strip_prefix("at ")
-                .filter(|rest| rest.starts_with(&marker))?,
-        };
-        frame_at(location).map(|(position, _)| remap(map, position).line)
-    })
+    /// The file and line of the innermost frame in a project module, from a
+    /// stack [`remap_frames`](Self::remap_frames) has already rewritten. A
+    /// frame in a library's module or a native function is skipped, so an
+    /// error thrown by the bridge is placed at the line that called it.
+    pub fn line_of(&self, stack: &str) -> Option<(String, u32)> {
+        stack.lines().find_map(|frame| {
+            let frame = frame.trim();
+            let location = match frame.rfind('(') {
+                Some(at) => &frame[at + 1..],
+                None => frame.strip_prefix("at ")?,
+            };
+            self.frame_at(location)
+                .map(|(name, position, _)| (name.to_string(), position.line))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -165,39 +171,58 @@ mod tests {
         assert_eq!(remap(Some(&map), at(3, 1)), at(9, 1));
         assert_eq!(remap(Some(&map), at(3, 4)), at(9, 1));
         assert_eq!(remap(Some(&map), at(3, 40)), at(1, 1));
-        // Before the line's first mapping: that mapping, the line's
-        // statement.
         assert_eq!(remap(Some(&map), at(5, 1)), at(12, 7));
     }
 
     #[test]
     fn a_position_no_mapping_covers_keeps_the_generated_one() {
         let map = map(&[((3, 1), (9, 1))]);
-        // Line 4 has no mapping; the one on line 3 is not borrowed.
         assert_eq!(remap(Some(&map), at(4, 2)), at(4, 2));
         assert_eq!(remap(None, at(4, 2)), at(4, 2));
     }
 
     #[test]
-    fn every_frame_in_the_script_is_rewritten_and_nothing_else() {
-        let map = map(&[((7, 1), (2, 1)), ((9, 3), (4, 3))]);
+    fn every_frame_in_a_project_module_is_rewritten_by_its_own_map() {
+        let mut chunks = Chunks::default();
+        chunks.insert("script", Some(map(&[((7, 1), (2, 1)), ((9, 3), (4, 3))])));
+        chunks.insert("lib/format.ts", Some(map(&[((5, 1), (40, 1))])));
+        chunks.insert("lib/plain.js", None);
         let stack = "Error: boom\n    at inner (script:7:10)\n    at happyview.db:7:1\n    \
-                     at myscript:7:1\n    at script:9:3\n    at handle (script:20:1)";
+                     at myscript:7:1\n    at fmt (lib/format.ts:5:3)\n    at lib/plain.js:3:1\n    \
+                     at handle (script:20:1)";
         assert_eq!(
-            remap_frames(stack, Some(&map)),
+            chunks.remap_frames(stack),
             "Error: boom\n    at inner (script:2:1)\n    at happyview.db:7:1\n    \
-             at myscript:7:1\n    at script:4:3\n    at handle (script:20:1)"
+             at myscript:7:1\n    at fmt (lib/format.ts:40:1)\n    at lib/plain.js:3:1\n    \
+             at handle (script:20:1)"
         );
-        assert_eq!(line_of(stack, Some(&map)), Some(2));
-        assert_eq!(remap_frames(stack, None), stack);
-        assert_eq!(line_of(stack, None), Some(7));
     }
 
     #[test]
-    fn a_stack_with_no_frame_in_the_script_has_no_line() {
+    fn the_innermost_project_frame_names_its_file() {
+        let mut chunks = Chunks::default();
+        chunks.insert("script", None);
+        chunks.insert("lib/format.js", None);
+        let stack =
+            "    at <native>\n    at happyview.db:3:1\n    at f (lib/format.js:12:5)\n    at script:2:1";
         assert_eq!(
-            line_of("    at happyview.db:3:1\n    at <native>", None),
+            chunks.line_of(stack),
+            Some(("lib/format.js".to_string(), 12))
+        );
+        assert_eq!(
+            chunks.line_of("    at happyview.db:3:1\n    at <native>"),
             None
+        );
+    }
+
+    #[test]
+    fn a_name_matches_only_where_the_frame_location_starts() {
+        let mut chunks = Chunks::default();
+        chunks.insert("a.js", None);
+        assert_eq!(chunks.line_of("    at f (lib/a.js:3:1)"), None);
+        assert_eq!(
+            chunks.line_of("    at a.js:2:1"),
+            Some(("a.js".to_string(), 2))
         );
     }
 }

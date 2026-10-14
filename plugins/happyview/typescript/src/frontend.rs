@@ -46,6 +46,10 @@ impl Frontend for TypeScript {
             transform(source)
         })
     }
+
+    fn read_map(&self, json: &str) -> Result<SourceMap, String> {
+        decode(json)
+    }
 }
 
 /// The syntax every script is read with: TypeScript, never TSX, with
@@ -304,13 +308,14 @@ fn transform(source: &str) -> Result<Prepared, Vec<ValidateError>> {
         return Err(reported);
     }
     let output = output.map_err(|error| vec![syntax_error(None, error.message)])?;
-    let map = match output.map {
-        Some(map) => Some(decode(&map).map_err(|message| vec![syntax_error(None, message)])?),
+    let map = match &output.map {
+        Some(map) => Some(decode(map).map_err(|message| vec![syntax_error(None, message)])?),
         None => None,
     };
     Ok(Prepared {
         code: output.code,
         map,
+        source_map: output.map,
     })
 }
 

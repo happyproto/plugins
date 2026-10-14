@@ -4,7 +4,8 @@
 //! calls in an order the test chose.
 
 use happyview_plugin_sdk::{
-    host, ApiSurface, JobProgressRequest, PluginError, ScriptLogRequest, Value as Json,
+    host, ApiSurface, JobProgressRequest, ModuleResolve, PluginError, ResolvedModule,
+    ScriptLogRequest, Value as Json,
 };
 
 pub trait Backend {
@@ -25,6 +26,21 @@ pub trait Backend {
     fn job_progress(&self, request: &JobProgressRequest) -> Result<(), PluginError>;
     fn job_should_stop(&self) -> Result<bool, PluginError>;
     fn job_wait(&self, seconds: f64) -> Result<(), PluginError>;
+
+    /// A relative import's module, from the run's project. The default is a
+    /// run with no project, which is what validation is and what every test
+    /// backend that predates local modules stands for, answered as the host
+    /// answers a dashboard script.
+    fn module_resolve(&self, request: &ModuleResolve) -> Result<ResolvedModule, PluginError> {
+        Err(PluginError::new(
+            "UNSUPPORTED",
+            format!(
+                "'{}' is a local module, and local modules come from a project: a script \
+                 created in the dashboard has no files beside it to import",
+                request.specifier
+            ),
+        ))
+    }
 }
 
 /// The host this module is instantiated by. Off wasm every wrapper answers
@@ -58,6 +74,10 @@ impl Backend for Host {
 
     fn job_wait(&self, seconds: f64) -> Result<(), PluginError> {
         host::job_wait(seconds)
+    }
+
+    fn module_resolve(&self, request: &ModuleResolve) -> Result<ResolvedModule, PluginError> {
+        host::module_resolve(request)
     }
 }
 
@@ -110,6 +130,8 @@ pub mod fake {
     use std::cell::{Cell, RefCell};
     use std::collections::BTreeMap;
 
+    use happyview_plugin_sdk::PreparedArtifact;
+
     use super::*;
 
     /// Which of the waited handles settles first.
@@ -142,6 +164,11 @@ pub mod fake {
         pub progress: RefCell<Vec<Json>>,
         pub waits: RefCell<Vec<f64>>,
         pub should_stop: Cell<bool>,
+        modules: BTreeMap<String, ResolvedModule>,
+        extension: &'static str,
+        /// Every module request as `(specifier, referrer)`, in the order
+        /// asked.
+        pub resolved: RefCell<Vec<(String, String)>>,
     }
 
     impl Default for Fake {
@@ -165,6 +192,9 @@ pub mod fake {
                 progress: RefCell::new(Vec::new()),
                 waits: RefCell::new(Vec::new()),
                 should_stop: Cell::new(false),
+                modules: BTreeMap::new(),
+                extension: "js",
+                resolved: RefCell::new(Vec::new()),
             }
         }
 
@@ -190,6 +220,43 @@ pub mod fake {
         /// request.
         pub fn refusing_start(self) -> Self {
             self.refuse_start.set(true);
+            self
+        }
+
+        /// A module in the project, by the id the host would answer for it.
+        pub fn module(mut self, id: &str, source: &str) -> Self {
+            self.modules.insert(
+                id.to_string(),
+                ResolvedModule {
+                    id: id.to_string(),
+                    source: source.to_string(),
+                    artifact: None,
+                },
+            );
+            self
+        }
+
+        pub fn module_artifact(
+            mut self,
+            id: &str,
+            source: &str,
+            artifact: PreparedArtifact,
+        ) -> Self {
+            self.modules.insert(
+                id.to_string(),
+                ResolvedModule {
+                    id: id.to_string(),
+                    source: source.to_string(),
+                    artifact: Some(artifact),
+                },
+            );
+            self
+        }
+
+        /// The extension a specifier without one is completed with, as the
+        /// host completes it with the calling interpreter's own.
+        pub fn extension(mut self, extension: &'static str) -> Self {
+            self.extension = extension;
             self
         }
     }
@@ -248,6 +315,43 @@ pub mod fake {
         fn job_wait(&self, seconds: f64) -> Result<(), PluginError> {
             self.waits.borrow_mut().push(seconds);
             Ok(())
+        }
+
+        fn module_resolve(&self, request: &ModuleResolve) -> Result<ResolvedModule, PluginError> {
+            self.resolved
+                .borrow_mut()
+                .push((request.specifier.clone(), request.referrer.clone()));
+            let id = join(&request.referrer, &request.specifier, self.extension);
+            self.modules.get(&id).cloned().ok_or_else(|| {
+                PluginError::new(
+                    "NOT_FOUND",
+                    format!(
+                        "no module '{}' from {}: looked for {id}",
+                        request.specifier, request.referrer
+                    ),
+                )
+            })
+        }
+    }
+
+    /// `specifier` against `referrer`'s directory, completed with
+    /// `extension` when its last segment has none.
+    fn join(referrer: &str, specifier: &str, extension: &str) -> String {
+        let mut parts: Vec<&str> = referrer.split('/').collect();
+        parts.pop();
+        for part in specifier.split('/') {
+            match part {
+                "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                part => parts.push(part),
+            }
+        }
+        let id = parts.join("/");
+        match id.rsplit('/').next() {
+            Some(file) if file.contains('.') => id,
+            _ => format!("{id}.{extension}"),
         }
     }
 }

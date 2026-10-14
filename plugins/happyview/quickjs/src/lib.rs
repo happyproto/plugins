@@ -8,6 +8,7 @@
 //! install of its own while everything a script can observe at run time is
 //! one implementation.
 
+mod artifact;
 mod backend;
 mod bridge;
 mod budget;
@@ -20,15 +21,17 @@ mod ctx;
 mod imports;
 mod positions;
 mod sandbox;
+mod scan;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use happyview_plugin_sdk::{
-    ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError, ScriptErrorKind, ScriptValueKind,
-    ValidateError, ValidateInput, ValidateOutput,
+    ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, ImportRef, PluginError, ScriptErrorKind,
+    ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
 };
+use rquickjs::module::WriteOptions;
 use rquickjs::prelude::Coerced;
 use rquickjs::{Ctx, FromJs, Module, Promise, Value};
 
@@ -37,7 +40,7 @@ pub use backend::fake;
 pub use backend::Backend;
 use budget::Budget;
 use calls::{Calls, ClearOnDrop, Unsettled};
-pub use positions::{Mapping, Position, SourceMap};
+pub use positions::{remap, Chunks, Mapping, Position, SourceMap};
 
 /// The step from what an author wrote to the JavaScript QuickJS compiles.
 /// It is the only thing a language plugin supplies: what runs afterwards,
@@ -47,6 +50,13 @@ pub trait Frontend {
     /// already carries its line in the author's own source, because the
     /// front end is the only thing that knows where that is.
     fn prepare(&self, source: &str) -> Result<Prepared, Vec<ValidateError>>;
+
+    /// A map [`Prepared::source_map`] carried, read back. An artifact keeps
+    /// its map as text, and a run from the artifact reads it here rather
+    /// than preparing the source again.
+    fn read_map(&self, _json: &str) -> Result<SourceMap, String> {
+        Err("this language's front end writes no source map".to_string())
+    }
 }
 
 /// A script ready for the engine.
@@ -56,6 +66,9 @@ pub struct Prepared {
     /// Where `code` came from in the source, when the front end moved
     /// anything. `None` says every position is already the author's.
     pub map: Option<SourceMap>,
+    /// `map` as text this front end's [`Frontend::read_map`] reads back,
+    /// which is what a prepared artifact keeps.
+    pub source_map: Option<String>,
 }
 
 /// JavaScript itself, which is what the engine already runs: nothing to
@@ -67,11 +80,15 @@ impl Frontend for JavaScript {
         Ok(Prepared {
             code: source.to_string(),
             map: None,
+            source_map: None,
         })
     }
 }
 
 pub const MISSING_HANDLE: &str = "script must export a default function";
+
+/// The chunk name of a script no file names: one saved in the dashboard.
+const DEFAULT_CHUNK: &str = happyview_plugin_sdk::DEFAULT_CHUNK_NAME;
 
 /// Validation carries no operator limits, so it works from a fixed pair:
 /// large enough for any file-scope work a script does while loading, small
@@ -95,7 +112,7 @@ const MAX_STUBBED_IMPORTS: usize = 256;
 /// Run a script against the host this module is instantiated by: what an
 /// interpreter plugin's `execute` export calls.
 pub fn execute(
-    frontend: &dyn Frontend,
+    frontend: &'static dyn Frontend,
     input: &ExecuteInput,
 ) -> Result<ExecuteOutput, PluginError> {
     execute_with(frontend, input, Rc::new(backend::Host))
@@ -103,70 +120,98 @@ pub fn execute(
 
 /// [`execute`] against `backend`, which a test chooses.
 pub fn execute_with(
-    frontend: &dyn Frontend,
+    frontend: &'static dyn Frontend,
     input: &ExecuteInput,
     backend: Rc<dyn Backend>,
 ) -> Result<ExecuteOutput, PluginError> {
-    let prepared = match frontend.prepare(&input.source) {
-        Ok(prepared) => prepared,
-        Err(errors) => return Ok(not_prepared(errors)),
+    let body = match body(frontend, input)? {
+        Ok(body) => body,
+        Err(errors) => return Ok(not_prepared(errors, &input.chunk_name)),
     };
     let (runtime, budget) = budget::runtime().map_err(interpreter_error)?;
     let calls = Rc::new(Calls::new(backend.clone()));
+    let project = Rc::new(imports::Project::new(
+        frontend,
+        backend.clone(),
+        &input.chunk_name,
+        body,
+    ));
     runtime.set_loader(
-        imports::Names,
-        imports::Libraries::new(backend.clone(), &input.libraries, calls.clone()),
+        imports::Specifiers::running(project.clone()),
+        imports::Load {
+            project: project.clone(),
+            libraries: imports::Libraries::new(backend.clone(), &input.libraries, calls.clone()),
+        },
     );
     let context = sandbox::create(&runtime, backend.clone()).map_err(interpreter_error)?;
     budget::install(&runtime, &budget, &input.limits);
 
     context.with(|ctx| {
         let _clear = ClearOnDrop(&calls);
-        run(&ctx, &prepared, input, &backend, &calls, &budget)
+        run(&ctx, &project, input, &backend, &calls, &budget)
     })
+}
+
+/// The script as the loader will declare it: this build's bytecode when the
+/// host sent some, the front end's output otherwise. The outer `Err` is an
+/// artifact this build cannot load with no source to fall back to, which is
+/// the host's to fix rather than the script's.
+fn body(
+    frontend: &dyn Frontend,
+    input: &ExecuteInput,
+) -> Result<Result<imports::Body, Vec<ValidateError>>, PluginError> {
+    match imports::Body::from_artifact(frontend, input.artifact.as_ref(), &input.source) {
+        Ok(Some(body)) => Ok(Ok(body)),
+        Ok(None) => Ok(frontend.prepare(&input.source).map(imports::Body::Source)),
+        Err(why) => Err(interpreter_error(why)),
+    }
 }
 
 fn run<'js>(
     ctx: &Ctx<'js>,
-    prepared: &Prepared,
+    project: &imports::Project,
     input: &ExecuteInput,
     backend: &Rc<dyn Backend>,
     calls: &Calls,
     budget: &Budget,
 ) -> Result<ExecuteOutput, PluginError> {
-    let map = prepared.map.as_ref();
-    let module = match Module::declare(ctx.clone(), sandbox::MODULE_NAME, prepared.code.as_str()) {
-        Ok(module) => module,
-        Err(e) => return Ok(script_failure(ctx, ScriptErrorKind::Syntax, e, budget, map)),
+    // Borrowed only once a run has failed: a dynamic import inside the event
+    // loop adds a module to `chunks` while the run is in flight.
+    let failed = |kind: ScriptErrorKind, e: rquickjs::Error| {
+        script_failure(ctx, kind, e, budget, &project.chunks.borrow())
+    };
+    let entry = match Module::declare(
+        ctx.clone(),
+        imports::ENTRY,
+        imports::entry_source(project.main()),
+    ) {
+        Ok(entry) => entry,
+        Err(e) => return Ok(failed(ScriptErrorKind::Syntax, e)),
     };
     // File scope, top-level `await` included, settles through the same loop
     // a handler's promise does, before `handle` is ever called.
-    let module = match module.eval() {
-        Ok((module, evaluated)) => match wait(ctx, calls, &evaluated, budget, map, "the module")? {
-            Ok(_) => module,
-            Err(failure) => return Ok(failure),
-        },
-        Err(e) => {
-            return Ok(script_failure(
+    let entry = match entry.eval() {
+        Ok((entry, evaluated)) => {
+            match wait(
                 ctx,
-                ScriptErrorKind::Runtime,
-                e,
+                calls,
+                &evaluated,
                 budget,
-                map,
-            ))
+                &project.chunks,
+                "the module",
+            )? {
+                Ok(_) => entry,
+                Err(failure) => return Ok(failure),
+            }
         }
+        Err(e) => return Ok(failed(ScriptErrorKind::Runtime, e)),
     };
-    let handle: Value = match module.get("default") {
+    let handle: Value = match entry
+        .get::<_, rquickjs::Object>("default")
+        .and_then(|main| main.get("default"))
+    {
         Ok(handle) => handle,
-        Err(e) => {
-            return Ok(script_failure(
-                ctx,
-                ScriptErrorKind::Runtime,
-                e,
-                budget,
-                map,
-            ))
-        }
+        Err(e) => return Ok(failed(ScriptErrorKind::Runtime, e)),
     };
     let Some(handle) = handle.into_function() else {
         return Ok(failure(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
@@ -178,18 +223,17 @@ fn run<'js>(
         .and_then(|argument| Ok((argument, ctx::build(ctx, &input.context, backend)?)));
     let returned = match arguments.and_then(|arguments| handle.call::<_, Value>(arguments)) {
         Ok(returned) => returned,
-        Err(e) => {
-            return Ok(script_failure(
-                ctx,
-                ScriptErrorKind::Runtime,
-                e,
-                budget,
-                map,
-            ))
-        }
+        Err(e) => return Ok(failed(ScriptErrorKind::Runtime, e)),
     };
     let returned = match returned.clone().into_promise() {
-        Some(promise) => match wait(ctx, calls, &promise, budget, map, "handle's promise")? {
+        Some(promise) => match wait(
+            ctx,
+            calls,
+            &promise,
+            budget,
+            &project.chunks,
+            "handle's promise",
+        )? {
             Ok(value) => value,
             Err(failure) => return Ok(failure),
         },
@@ -206,13 +250,7 @@ fn run<'js>(
     let value_kind = value_kind(&returned);
     match convert::to_json(ctx, returned) {
         Ok(value) => Ok(ExecuteOutput::Returned { value, value_kind }),
-        Err(e) => Ok(script_failure(
-            ctx,
-            ScriptErrorKind::Runtime,
-            e,
-            budget,
-            map,
-        )),
+        Err(e) => Ok(failed(ScriptErrorKind::Runtime, e)),
     }
 }
 
@@ -223,7 +261,7 @@ fn wait<'js>(
     calls: &Calls,
     promise: &Promise<'js>,
     budget: &Budget,
-    map: Option<&SourceMap>,
+    chunks: &RefCell<Chunks>,
     what: &str,
 ) -> Result<Result<Value<'js>, ExecuteOutput>, PluginError> {
     match calls.run(ctx, promise, budget) {
@@ -233,7 +271,7 @@ fn wait<'js>(
             ScriptErrorKind::Runtime,
             e,
             budget,
-            map,
+            &chunks.borrow(),
         ))),
         Err(Unsettled::Spent) => Ok(Err(failure(ScriptErrorKind::Timeout, budget::SPENT))),
         Err(Unsettled::Stuck) => Ok(Err(failure(ScriptErrorKind::Runtime, never_settled(what)))),
@@ -261,12 +299,14 @@ pub fn validate(
             return Ok(ValidateOutput {
                 valid: false,
                 errors,
+                ..ValidateOutput::default()
             })
         }
     };
+    let name = input.chunk_name.as_deref().unwrap_or(DEFAULT_CHUNK);
     let wanted: Wanted = Rc::new(RefCell::new(BTreeMap::new()));
     for _ in 0..=MAX_STUBBED_IMPORTS {
-        match validate_once(&prepared, &wanted)? {
+        match validate_once(&prepared, name, input, &wanted)? {
             Attempt::Done(output) => return Ok(output),
             Attempt::Wants(module, export) => {
                 // A name already stubbed and still missing is not one more
@@ -302,23 +342,30 @@ enum Attempt {
 /// Compile and evaluate file scope with every import a stub, then check for
 /// a default export that is a function. Evaluating under a budget is the
 /// point: a loop at file scope fails rather than hanging the editor.
-fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, PluginError> {
+fn validate_once(
+    prepared: &Prepared,
+    name: &str,
+    input: &ValidateInput,
+    wanted: &Wanted,
+) -> Result<Attempt, PluginError> {
     let (runtime, budget) = budget::runtime().map_err(interpreter_error)?;
     let backend: Rc<dyn Backend> = Rc::new(backend::Validating);
     let calls = Calls::new(backend.clone());
     runtime.set_loader(
-        imports::Names,
+        imports::Specifiers::validating(),
         imports::Stubs {
             wanted: wanted.clone(),
         },
     );
     let context = sandbox::create(&runtime, backend).map_err(interpreter_error)?;
     budget::install(&runtime, &budget, &VALIDATE_LIMITS);
+    let mut chunks = Chunks::default();
+    chunks.insert(name, prepared.map.clone());
 
     context.with(|ctx| {
         let _clear = ClearOnDrop(&calls);
         let refused = |kind, e| -> Attempt {
-            let thrown = describe(&ctx, e, prepared.map.as_ref());
+            let thrown = describe(&ctx, e, &chunks);
             if let Some((module, export)) = imports::missing_export(&thrown.text) {
                 return Attempt::Wants(module, export);
             }
@@ -331,11 +378,21 @@ fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, Plugin
         };
         let done = |kind, message: &str| Attempt::Done(invalid(kind, None, message));
 
-        let module =
-            match Module::declare(ctx.clone(), sandbox::MODULE_NAME, prepared.code.as_str()) {
-                Ok(module) => module,
-                Err(e) => return Ok(refused(ScriptErrorKind::Syntax, e)),
-            };
+        let module = match Module::declare(ctx.clone(), name, prepared.code.as_str()) {
+            Ok(module) => module,
+            Err(e) => return Ok(refused(ScriptErrorKind::Syntax, e)),
+        };
+        // Written before file scope runs: what is kept is the compiled
+        // module, and evaluating it replaces its function object.
+        let bytes = if input.prepare {
+            Some(
+                module
+                    .write(WriteOptions::default())
+                    .map_err(interpreter_error)?,
+            )
+        } else {
+            None
+        };
         let module = match module.eval() {
             Ok((module, evaluated)) => match calls.run(&ctx, &evaluated, &budget) {
                 Ok(_) => module,
@@ -350,15 +407,39 @@ fn validate_once(prepared: &Prepared, wanted: &Wanted) -> Result<Attempt, Plugin
             },
             Err(e) => return Ok(refused(ScriptErrorKind::Runtime, e)),
         };
-        Ok(match module.get::<_, Value>("default") {
-            Ok(handle) if handle.is_function() => Attempt::Done(ValidateOutput {
+        let valid = || {
+            Attempt::Done(ValidateOutput {
                 valid: true,
-                errors: Vec::new(),
-            }),
+                artifact: bytes
+                    .clone()
+                    .map(|bytes| artifact::prepared(bytes, prepared.source_map.clone())),
+                imports: literal_imports(prepared),
+                ..ValidateOutput::default()
+            })
+        };
+        // A module or a test is imported or run, never called, so it has no
+        // default export to require.
+        if input.role != ChunkRole::Handler {
+            return Ok(valid());
+        }
+        Ok(match module.get::<_, Value>("default") {
+            Ok(handle) if handle.is_function() => valid(),
             Ok(_) => done(ScriptErrorKind::MissingHandle, MISSING_HANDLE),
             Err(e) => refused(ScriptErrorKind::Runtime, e),
         })
     })
+}
+
+/// The literal relative imports in what QuickJS compiles, each placed on the
+/// author's line through the front end's map.
+fn literal_imports(prepared: &Prepared) -> Vec<ImportRef> {
+    scan::relative_imports(&prepared.code)
+        .into_iter()
+        .map(|(specifier, at)| ImportRef {
+            specifier,
+            line: positions::remap(prepared.map.as_ref(), at).line,
+        })
+        .collect()
 }
 
 /// The host branches three ways on what a script returned, and a JSON `null`
@@ -377,7 +458,7 @@ fn value_kind(value: &Value) -> ScriptValueKind {
 
 /// A script its front end refused, as the run's failure: the first refusal
 /// is what a caller is shown and placed by, and the event log gets them all.
-fn not_prepared(errors: Vec<ValidateError>) -> ExecuteOutput {
+fn not_prepared(errors: Vec<ValidateError>, chunk: &str) -> ExecuteOutput {
     let raw = errors
         .iter()
         .map(|error| match error.line {
@@ -390,6 +471,10 @@ fn not_prepared(errors: Vec<ValidateError>) -> ExecuteOutput {
         Some(first) => ExecuteOutput::Error {
             kind: first.kind,
             message: first.message,
+            chunk: first
+                .line
+                .filter(|_| chunk != DEFAULT_CHUNK)
+                .map(|_| chunk.to_string()),
             line: first.line,
             raw,
         },
@@ -404,6 +489,7 @@ fn failure(kind: ScriptErrorKind, message: impl Into<String>) -> ExecuteOutput {
         raw: message.clone(),
         message,
         line: None,
+        chunk: None,
     }
 }
 
@@ -415,9 +501,9 @@ fn script_failure(
     default: ScriptErrorKind,
     error: rquickjs::Error,
     budget: &Budget,
-    map: Option<&SourceMap>,
+    chunks: &Chunks,
 ) -> ExecuteOutput {
-    let thrown = describe(ctx, error, map);
+    let thrown = describe(ctx, error, chunks);
     let default = compile_kind(default, &thrown);
     let (kind, message) = if budget.is_spent() {
         (ScriptErrorKind::Timeout, budget::SPENT.to_string())
@@ -431,6 +517,7 @@ fn script_failure(
         message,
         line: thrown.line,
         raw: thrown.raw,
+        chunk: thrown.chunk,
     }
 }
 
@@ -456,6 +543,8 @@ struct Thrown {
     /// unless that is plain `Error`, so `throw new Error("boom")` reads as
     /// `boom` and a `TypeError` says that it is one.
     message: String,
+    /// The project module `line` is in, unless that is the dashboard's script.
+    chunk: Option<String>,
     line: Option<u32>,
     /// The name, message and stack whole, for the event log.
     raw: String,
@@ -474,6 +563,7 @@ impl Thrown {
             message: text.clone(),
             raw: text.clone(),
             text,
+            chunk: None,
             line: None,
             memory,
             syntax: false,
@@ -481,17 +571,17 @@ impl Thrown {
     }
 }
 
-/// What was thrown, with every position in it the author's: `map` is the
-/// front end's, and `None` when it moved nothing.
-fn describe(ctx: &Ctx<'_>, error: rquickjs::Error, map: Option<&SourceMap>) -> Thrown {
+/// What was thrown, with every position in it the author's: `chunks` holds
+/// each project module's map, and none for a module that moved nothing.
+fn describe(ctx: &Ctx<'_>, error: rquickjs::Error, chunks: &Chunks) -> Thrown {
     match error {
-        rquickjs::Error::Exception => describe_value(ctx, ctx.catch(), map),
+        rquickjs::Error::Exception => describe_value(ctx, ctx.catch(), chunks),
         rquickjs::Error::Allocation => Thrown::plain(budget::OUT_OF_MEMORY.to_string(), true),
         other => Thrown::plain(other.to_string(), false),
     }
 }
 
-fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap>) -> Thrown {
+fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, chunks: &Chunks) -> Thrown {
     let read = |name: &str| -> Option<String> {
         let object = value.as_object()?;
         match object.get::<_, Option<Coerced<String>>>(name) {
@@ -508,7 +598,8 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap
     if value.is_error() {
         let name = read("name").unwrap_or_else(|| "Error".to_string());
         let text = read("message").unwrap_or_default();
-        let stack = positions::remap_frames(&read("stack").unwrap_or_default(), map);
+        let stack = chunks.remap_frames(&read("stack").unwrap_or_default());
+        let place = chunks.line_of(&stack);
         let message = if name == "Error" {
             text.clone()
         } else {
@@ -521,7 +612,12 @@ fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, map: Option<&SourceMap
         }
         return Thrown {
             syntax: name == "SyntaxError",
-            line: positions::line_of(&stack, None),
+            // The dashboard's chunk names no file anyone could open.
+            chunk: place
+                .as_ref()
+                .map(|(chunk, _)| chunk.clone())
+                .filter(|chunk| chunk != DEFAULT_CHUNK),
+            line: place.map(|(_, line)| line),
             memory: name == "InternalError" && text == budget::OUT_OF_MEMORY,
             text,
             message,
@@ -550,12 +646,15 @@ fn invalid(kind: ScriptErrorKind, line: Option<u32>, message: impl Into<String>)
             line,
             message: message.into(),
         }],
+        ..ValidateOutput::default()
     }
 }
 
-/// A runtime that cannot be built is the interpreter failing, not the
-/// script, so it leaves as an envelope error rather than as a script result.
-fn interpreter_error(e: rquickjs::Error) -> PluginError {
+/// A runtime that cannot be built, or a handler artifact this build cannot
+/// use with no source behind it, is the interpreter or the host failing,
+/// not the script, so it leaves as an envelope error rather than as a
+/// script result.
+fn interpreter_error(e: impl ToString) -> PluginError {
     PluginError::new("INTERPRETER_ERROR", e.to_string())
 }
 

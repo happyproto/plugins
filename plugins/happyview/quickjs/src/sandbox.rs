@@ -14,10 +14,6 @@ use rquickjs::{Context, Ctx, Result, Runtime};
 use crate::backend::Backend;
 use crate::builtins;
 
-/// The name the script's module is compiled under. QuickJS writes a frame in
-/// it as `script:12:5`, which is what an error's `line` is read out of.
-pub const MODULE_NAME: &str = "script";
-
 /// Closes the four routes from a string to code: `eval`, and the
 /// constructors of the four function kinds, which are reachable from any
 /// function of that kind as `.constructor` and not only as globals. Each
@@ -145,6 +141,14 @@ pub(crate) mod tests {
             "['std', 'os', 'print', 'scriptArgs', 'setTimeout', 'require', 'process'] \
              .every((name) => typeof globalThis[name] === 'undefined')"
         ));
+    }
+
+    /// QuickJS does not verify bytecode, so the libc module that reads it must
+    /// not be reachable as a global either: the only bytecode a run loads is
+    /// an artifact the host supplied.
+    #[test]
+    fn the_bytecode_reader_is_not_a_global() {
+        assert!(eval_bool("typeof globalThis.bjson === 'undefined'"));
     }
 
     /// The guest has no zone to read, so `Date` reads and writes UTC — which

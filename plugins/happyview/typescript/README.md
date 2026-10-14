@@ -73,12 +73,15 @@ alike, and `validate` reports every one in the script rather than the first:
 
 The transform reprints the script, so the JavaScript QuickJS runs puts things
 on different lines — an `enum` alone becomes several. It also emits a source
-map, and every position the engine reports is read back through it: an
-error's `line`, every `script:L:C` frame in its `raw` stack, a compile error,
+map, and every position the engine reports is read back through it: an error's
+`line`, every frame in a project module in its `raw` stack, a compile error,
 and a validate error. A failure is therefore placed on the line the author
-wrote. A position the map does not cover keeps the one QuickJS reported
-rather than inventing one; the transform's own errors are in the author's
-source from the start.
+wrote. A position the map does not cover keeps the one QuickJS reported rather
+than inventing one; the transform's own errors are in the author's source from
+the start. A prepared artifact carries the transform's source map, so a run
+from bytecode places an error on the same TypeScript line a run from source
+does, and a local `.ts` module's errors land on its own lines through its own
+map.
 
 ## Budgets
 

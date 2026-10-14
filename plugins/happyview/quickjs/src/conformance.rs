@@ -26,8 +26,8 @@ use crate::backend::fake::Fake;
 use crate::Frontend;
 
 /// One language's translation of the corpus.
-pub struct Corpus<'a> {
-    pub frontend: &'a dyn Frontend,
+pub struct Corpus {
+    pub frontend: &'static dyn Frontend,
     /// The directory holding the scripts, `tests/corpus` in the language's
     /// crate.
     pub dir: PathBuf,
@@ -35,7 +35,7 @@ pub struct Corpus<'a> {
     pub extension: &'static str,
 }
 
-impl Corpus<'_> {
+impl Corpus {
     fn read(&self, stem: &str) -> String {
         let path = self.dir.join(format!("{stem}.{}", self.extension));
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
@@ -85,6 +85,7 @@ impl Corpus<'_> {
                 &ValidateInput {
                     source: self.read(stem),
                     removed_globals: Vec::new(),
+                    ..Default::default()
                 },
             )
             .expect("validate should answer an output rather than an envelope error");

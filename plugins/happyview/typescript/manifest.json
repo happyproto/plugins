@@ -7,6 +7,7 @@
   "description": "TypeScript (SWC and QuickJS-ng) for HappyView scripts.",
   "language_id": "typescript",
   "file_extension": "ts",
+  "extensions": ["ts", "mts"],
   "monaco_language": "typescript",
   "supports_libraries": ["*"],
   "capabilities": [

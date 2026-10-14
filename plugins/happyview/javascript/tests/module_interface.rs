@@ -31,8 +31,10 @@ const EXPECTED_EXPORTS: &[&str] = &[
 ];
 
 /// The three bridge imports — a surface read, a call started, a wait for any
-/// of them — and the four `script:host` ones. An interpreter needs no other
+/// of them — and the five `script:host` ones. An interpreter needs no other
 /// host function: everything a script can reach arrives through `import`.
+/// `host_module_resolve`, the fifth `script:host` import, answers a relative
+/// import from the run's project.
 const EXPECTED_ENV_IMPORTS: &[&str] = &[
     "host_call_library_start",
     "host_call_library_wait_any",
@@ -40,6 +42,7 @@ const EXPECTED_ENV_IMPORTS: &[&str] = &[
     "host_job_progress",
     "host_job_should_stop",
     "host_job_wait",
+    "host_module_resolve",
     "host_script_log",
 ];
 
