@@ -458,6 +458,7 @@ version = "0.1.0"
 dependencies = [
  "happyview-plugin-sdk",
  "happyview-quickjs",
+ "serde_json",
  "wasmparser",
 ]
 
@@ -496,8 +497,8 @@ dependencies = [
 
 [[package]]
 name = "happyview-plugin-sdk"
-version = "0.1.0"
-source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#03925d3cec917937855f07237fd7d15eb6ccf430"
+version = "0.3.0"
+source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#14e76e273418872238701b29a97c12a6b1a21c56"
 dependencies = [
  "base64",
  "dlmalloc",
