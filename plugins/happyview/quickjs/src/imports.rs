@@ -312,10 +312,14 @@ impl Project {
     }
 }
 
-/// Project code first, then what [`Libraries`] serves.
+/// Project code first, then the test library for a test run, then what
+/// [`Libraries`] serves.
 pub struct Load {
     pub project: Rc<Project>,
     pub libraries: Libraries,
+    /// Present only in a test file's run, which is the only run
+    /// `internal.test` is served to.
+    pub tests: Option<Rc<crate::test::Suite>>,
 }
 
 impl Loader for Load {
@@ -327,6 +331,12 @@ impl Loader for Load {
     ) -> Result<Module<'js, Declared>> {
         if let Some(module) = self.project.load(ctx, name) {
             return module;
+        }
+        if name == crate::test::MODULE {
+            return match &self.tests {
+                Some(suite) => suite.declare(ctx, self.libraries.backend()),
+                None => Err(throw_error(ctx, crate::test::NOT_A_TEST_FILE)),
+            };
         }
         self.libraries.load(ctx, name, attributes)
     }
@@ -362,6 +372,10 @@ impl Libraries {
             libraries: libraries.to_vec(),
             calls,
         }
+    }
+
+    pub fn backend(&self) -> &Rc<dyn Backend> {
+        &self.backend
     }
 }
 

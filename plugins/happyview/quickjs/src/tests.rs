@@ -1575,3 +1575,167 @@ fn the_fake_records_test_requests() {
     let refusing = Fake::new().refusing_triggers();
     assert_eq!(refusing.test_trigger(&spec).unwrap_err().code, "BAD_INPUT");
 }
+
+const TEST_FILE: &str = "src/lib/a.test.js";
+
+fn test_file_input(source: &str) -> ExecuteInput {
+    input(
+        source,
+        json!({
+            "kind": "test",
+            "input": null,
+            "context": { "trigger": format!("test:{TEST_FILE}") },
+            "limits": { "instructions": null, "memory_bytes": 67_108_864 },
+            "chunk_name": TEST_FILE,
+        }),
+    )
+}
+
+fn run_test_file(fake: Fake, source: &str) -> (ExecuteOutput, Rc<Fake>) {
+    let fake = Rc::new(fake);
+    let output = execute_with(&JavaScript, &test_file_input(source), fake.clone())
+        .expect("an output, not an envelope error");
+    (output, fake)
+}
+
+fn statuses(
+    fake: &Fake,
+) -> Vec<(
+    String,
+    happyview_plugin_sdk::TestStatus,
+    Option<String>,
+    Option<u32>,
+)> {
+    fake.reports
+        .borrow()
+        .iter()
+        .map(|r| (r.name.clone(), r.status, r.message.clone(), r.line))
+        .collect()
+}
+
+#[test]
+fn a_test_file_reports_every_test_by_its_full_name() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (output, fake) = run_test_file(
+        Fake::new(),
+        r#"import { describe, it } from "internal.test";
+describe("format", () => {
+  it("joins", () => {});
+  describe("nested", () => {
+    it("awaits", async () => { await Promise.resolve(1); });
+  });
+  it.skip("later");
+});"#,
+    );
+    assert_eq!(
+        returned(output),
+        (
+            json!({"passed": 2, "failed": 0, "skipped": 1}),
+            ScriptValueKind::Object
+        )
+    );
+    let got = statuses(&fake);
+    assert_eq!(got[0].0, "format > joins");
+    assert_eq!(got[1].0, "format > nested > awaits");
+    assert_eq!((got[2].0.as_str(), got[2].1), ("format > later", Skip));
+    assert!(fake.reports.borrow().iter().all(|r| r.path == TEST_FILE));
+    assert_eq!(got[0].1, Pass);
+}
+
+#[test]
+fn a_thrown_error_fails_its_test_at_its_line() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (_, fake) = run_test_file(
+        Fake::new(),
+        r#"import { it } from "internal.test";
+it("breaks", () => {
+  null.x;
+});
+it("runs anyway", () => {});"#,
+    );
+    let got = statuses(&fake);
+    assert_eq!(got[0].1, Fail);
+    assert_eq!(got[0].3, Some(3));
+    assert!(
+        got[0].2.as_deref().unwrap().contains("TypeError"),
+        "{:?}",
+        got[0].2
+    );
+    assert_eq!(fake.reports.borrow()[0].file.as_deref(), Some(TEST_FILE));
+    assert_eq!(got[1].1, Pass);
+}
+
+#[test]
+fn hooks_run_in_order_and_after_each_runs_after_a_failure() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (_, fake) = run_test_file(
+        Fake::new(),
+        r#"import { describe, it, beforeEach, afterEach } from "internal.test";
+const seen = [];
+describe("hooks", () => {
+  beforeEach(() => { seen.push("before"); });
+  afterEach(async () => { seen.push("after"); });
+  it("first", () => { seen.push("first"); throw new Error("boom"); });
+  it("second", () => {
+    if (seen.join(",") !== "before,first,after,before") throw new Error(seen.join(","));
+  });
+});"#,
+    );
+    let got = statuses(&fake);
+    assert_eq!((got[0].1, got[0].2.as_deref()), (Fail, Some("boom")));
+    assert_eq!(got[1].1, Pass, "{:?}", got[1].2);
+}
+
+#[test]
+fn internal_test_is_refused_outside_a_test_file() {
+    let (kind, message, _, _) = failure_of(
+        execute_script(&execute_input(
+            r#"import { it } from "internal.test"; export default () => 1;"#,
+        ))
+        .unwrap(),
+    );
+    assert_eq!(kind, ScriptErrorKind::Runtime);
+    assert!(message.contains("only in test files"), "{message}");
+}
+
+#[test]
+fn a_test_file_validates_without_a_default_export() {
+    let mut input = validate_input(r#"import { it } from "internal.test"; it("x", () => {});"#);
+    input.role = ChunkRole::Test;
+    input.chunk_name = Some(TEST_FILE.to_string());
+    assert!(validate_source(&input).unwrap().valid);
+    input.role = ChunkRole::Handler;
+    assert!(!validate_source(&input).unwrap().valid);
+}
+
+#[test]
+fn a_file_that_never_imports_internal_test_reports_nothing() {
+    let (output, fake) = run_test_file(Fake::new(), "const x = 1;");
+    assert_eq!(
+        returned(output).0,
+        json!({"passed": 0, "failed": 0, "skipped": 0})
+    );
+    assert!(fake.reports.borrow().is_empty());
+}
+
+/// A module is unit-tested directly: the test file imports it by relative
+/// path, as a handler would, and a failure inside the module is placed there.
+#[test]
+fn a_test_file_imports_a_module_and_a_failure_inside_it_is_placed_there() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (_, fake) = run_test_file(
+        Fake::new().module(
+            "src/lib/format.js",
+            "export const join = (a, b) => `${a}-${b}`;\nexport const broken = () => {\n  null.x;\n};\n",
+        ),
+        r#"import { it } from "internal.test";
+import { join, broken } from "./format.js";
+it("joins", () => { if (join("a", "b") !== "a-b") throw new Error("joined wrong"); });
+it("breaks inside the module", () => { broken(); });"#,
+    );
+    let reports = fake.reports.borrow();
+    assert_eq!(reports[0].status, Pass, "{:?}", reports[0].message);
+    assert_eq!(reports[1].status, Fail);
+    assert_eq!(reports[1].file.as_deref(), Some("src/lib/format.js"));
+    assert_eq!(reports[1].line, Some(3));
+}
