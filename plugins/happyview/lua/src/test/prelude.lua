@@ -17,6 +17,11 @@ local running = false
 -- Raise a failure placed at the test's own line rather than at this file's.
 local function fail(message)
   local file, line = host.location()
+  if not running and file and line then
+    -- Outside a test nothing catches the table, so the run's own error would
+    -- carry only its rendered text; a positioned string keeps the place.
+    error(file .. ":" .. line .. ": " .. message, 0)
+  end
   error(setmetatable({ message = message, file = file, line = line }, Failure), 0)
 end
 
@@ -83,11 +88,17 @@ function pending(name)
 end
 
 function before_each(fn)
+  if running then
+    error("before_each cannot be called inside a running test", 2)
+  end
   needs_function("before_each", fn)
   current.before[#current.before + 1] = fn
 end
 
 function after_each(fn)
+  if running then
+    error("after_each cannot be called inside a running test", 2)
+  end
   needs_function("after_each", fn)
   current.after[#current.after + 1] = fn
 end
