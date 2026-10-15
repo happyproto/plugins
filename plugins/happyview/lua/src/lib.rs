@@ -1227,4 +1227,78 @@ mod tests {
         );
         assert_eq!(got, vec![("expected 200, got 500".to_string(), Some(2))]);
     }
+
+    #[test]
+    fn trigger_calls_reach_the_host_with_the_wire_shape() {
+        use happyview_plugin_sdk::TestTriggerKind;
+        let (_, host) = run_test_file(
+            r#"local test = require("internal.test")
+    it("query", function()
+      local res = test.query("com.example.getThing", { id = "1" }, { as = "did:plc:alice" })
+      assert.are.equal(200, res.status)
+      assert.are.equal(1, res.body.thing)
+    end)
+    it("record", function()
+      test.record_create("com.example.thing", { did = "did:plc:alice", rkey = "1", record = { n = 1 } })
+      test.record_delete("com.example.thing", { rkey = "1" })
+    end)
+    it("job and label", function()
+      test.job("export", { n = 1 })
+      test.label("at://did:plc:alice/com.example.thing/1", { val = "spam" })
+    end)
+    it("mocks", function()
+      test.mock("http", { get = { { status = 200 }, { status = 500 } } })
+      assert.are.equal("get", test.calls("http")[1].method)
+      assert.are.same({}, test.pds_writes())
+    end)"#,
+        );
+        let failed: Vec<_> = host
+            .reports
+            .borrow()
+            .iter()
+            .filter(|r| r.status != happyview_plugin_sdk::TestStatus::Pass)
+            .map(|r| (r.name.clone(), r.message.clone()))
+            .collect();
+        assert!(failed.is_empty(), "{failed:?}");
+
+        let triggers = host.triggers.borrow();
+        assert_eq!(triggers[0].kind, TestTriggerKind::Query);
+        assert_eq!(triggers[0].input, json!({"id": "1"}));
+        assert_eq!(triggers[0].as_did.as_deref(), Some("did:plc:alice"));
+        assert_eq!(triggers[1].kind, TestTriggerKind::RecordCreate);
+        assert_eq!(triggers[1].did.as_deref(), Some("did:plc:alice"));
+        assert_eq!(triggers[1].rkey.as_deref(), Some("1"));
+        assert_eq!(triggers[1].input, json!({"n": 1}));
+        assert_eq!(triggers[2].kind, TestTriggerKind::RecordDelete);
+        assert_eq!(triggers[2].input, json!(null));
+        assert_eq!(triggers[3].kind, TestTriggerKind::Job);
+        assert_eq!(triggers[4].kind, TestTriggerKind::Label);
+        assert_eq!(triggers[4].input, json!({"val": "spam"}));
+        let mocks = host.mocks.borrow();
+        assert_eq!(
+            mocks[0].responses,
+            json!({"get": [{"status": 200}, {"status": 500}]})
+        );
+    }
+
+    #[test]
+    fn a_host_refusal_fails_the_test_at_the_call() {
+        let host = std::rc::Rc::new(test::Recording::default());
+        host.refuse.set(true);
+        run_test_file_in(
+            &[],
+            host.clone(),
+            r#"local test = require("internal.test")
+    it("untracked", function()
+      test.record_create("com.example.unknown", { record = {} })
+    end)"#,
+        );
+        let reports = host.reports.borrow();
+        assert_eq!(reports[0].status, happyview_plugin_sdk::TestStatus::Fail);
+        assert_eq!(reports[0].line, Some(3));
+        assert_eq!(
+            reports[0].message.as_deref(),
+            Some("test.record_create: com.example.unknown has no record lexicon in this project")
+        );
+    }
 }
