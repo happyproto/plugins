@@ -26,7 +26,7 @@ local function capture(err)
   if getmetatable(err) == Failure then
     return err
   end
-  local file, line, message = host.split(tostring(err))
+  local file, line, message = host.split(err)
   if not file then
     file, line = host.location()
   end
@@ -273,7 +273,7 @@ function checks.has_error(fn, expected)
   if getmetatable(err) == Failure then
     message = err.message
   else
-    local _, _, text = host.split(tostring(err))
+    local _, _, text = host.split(err)
     message = text
   end
   if message ~= expected then
@@ -292,6 +292,62 @@ assert = setmetatable(checks, {
   end,
 })
 
+local function options(opts)
+  return opts or {}
+end
+
 local test = {}
+
+function test.query(nsid, params, opts)
+  return host.trigger({ kind = "query", target = nsid, input = params or {}, as = options(opts).as })
+end
+
+function test.procedure(nsid, input, opts)
+  return host.trigger({ kind = "procedure", target = nsid, input = input or {}, as = options(opts).as })
+end
+
+local function record(kind, collection, opts, with_record)
+  opts = options(opts)
+  return host.trigger({
+    kind = kind,
+    target = collection,
+    input = with_record and (opts.record or {}) or nil,
+    did = opts.did,
+    rkey = opts.rkey,
+    as = opts.as,
+  })
+end
+
+function test.record_create(collection, opts)
+  return record("record_create", collection, opts, true)
+end
+
+function test.record_update(collection, opts)
+  return record("record_update", collection, opts, true)
+end
+
+function test.record_delete(collection, opts)
+  return record("record_delete", collection, opts, false)
+end
+
+function test.job(job_type, input, opts)
+  return host.trigger({ kind = "job", target = job_type, input = input or {}, as = options(opts).as })
+end
+
+function test.label(uri, label)
+  return host.trigger({ kind = "label", target = uri, input = label or {} })
+end
+
+function test.mock(namespace, responses)
+  host.mock(namespace, responses)
+end
+
+function test.calls(namespace)
+  return host.calls(namespace)
+end
+
+function test.pds_writes()
+  return host.pds_writes()
+end
 
 return run, test
