@@ -22,6 +22,7 @@ mod imports;
 mod positions;
 mod sandbox;
 mod scan;
+mod test;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,7 +30,7 @@ use std::rc::Rc;
 
 use happyview_plugin_sdk::{
     ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, ImportRef, PluginError, ScriptErrorKind,
-    ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
+    ScriptKind, ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
 };
 use rquickjs::module::WriteOptions;
 use rquickjs::prelude::Coerced;
@@ -136,11 +137,14 @@ pub fn execute_with(
         &input.chunk_name,
         body,
     ));
+    let suite = (input.kind == ScriptKind::Test)
+        .then(|| test::Suite::new(&input.chunk_name, project.clone()));
     runtime.set_loader(
         imports::Specifiers::running(project.clone()),
         imports::Load {
             project: project.clone(),
             libraries: imports::Libraries::new(backend.clone(), &input.libraries, calls.clone()),
+            tests: suite.clone(),
         },
     );
     let context = sandbox::create(&runtime, backend.clone()).map_err(interpreter_error)?;
@@ -148,7 +152,19 @@ pub fn execute_with(
 
     context.with(|ctx| {
         let _clear = ClearOnDrop(&calls);
-        run(&ctx, &project, input, &backend, &calls, &budget)
+        let output = run(
+            &ctx,
+            &project,
+            input,
+            &backend,
+            &calls,
+            &budget,
+            suite.as_deref(),
+        );
+        if let Some(suite) = &suite {
+            suite.release();
+        }
+        output
     })
 }
 
@@ -174,6 +190,7 @@ fn run<'js>(
     backend: &Rc<dyn Backend>,
     calls: &Calls,
     budget: &Budget,
+    suite: Option<&test::Suite>,
 ) -> Result<ExecuteOutput, PluginError> {
     // Borrowed only once a run has failed: a dynamic import inside the event
     // loop adds a module to `chunks` while the run is in flight.
@@ -206,6 +223,11 @@ fn run<'js>(
         }
         Err(e) => return Ok(failed(ScriptErrorKind::Runtime, e)),
     };
+    // A test file has no default export: running its collected tests is the
+    // run.
+    if let Some(suite) = suite {
+        return run_tests(ctx, suite, project, calls, budget);
+    }
     let handle: Value = match entry
         .get::<_, rquickjs::Object>("default")
         .and_then(|main| main.get("default"))
@@ -250,6 +272,50 @@ fn run<'js>(
     let value_kind = value_kind(&returned);
     match convert::to_json(ctx, returned) {
         Ok(value) => Ok(ExecuteOutput::Returned { value, value_kind }),
+        Err(e) => Ok(failed(ScriptErrorKind::Runtime, e)),
+    }
+}
+
+/// A test file's run: file scope has collected the tests, and the library's
+/// runner runs them, each reporting as it ends.
+fn run_tests<'js>(
+    ctx: &Ctx<'js>,
+    suite: &test::Suite,
+    project: &imports::Project,
+    calls: &Calls,
+    budget: &Budget,
+) -> Result<ExecuteOutput, PluginError> {
+    let failed = |kind: ScriptErrorKind, e: rquickjs::Error| {
+        script_failure(ctx, kind, e, budget, &project.chunks.borrow())
+    };
+    let Some(runner) = suite.runner(ctx).map_err(interpreter_error)? else {
+        return Ok(ExecuteOutput::Returned {
+            value: serde_json::json!({"passed": 0, "failed": 0, "skipped": 0}),
+            value_kind: ScriptValueKind::Object,
+        });
+    };
+    let counts = match runner.call::<_, Value>(()) {
+        Ok(value) => match value.clone().into_promise() {
+            Some(promise) => match wait(
+                ctx,
+                calls,
+                &promise,
+                budget,
+                &project.chunks,
+                "the test run",
+            )? {
+                Ok(counts) => counts,
+                Err(failure) => return Ok(failure),
+            },
+            None => value,
+        },
+        Err(e) => return Ok(failed(ScriptErrorKind::Runtime, e)),
+    };
+    match convert::to_json(ctx, counts) {
+        Ok(value) => Ok(ExecuteOutput::Returned {
+            value,
+            value_kind: ScriptValueKind::Object,
+        }),
         Err(e) => Ok(failed(ScriptErrorKind::Runtime, e)),
     }
 }
@@ -535,17 +601,17 @@ fn compile_kind(default: ScriptErrorKind, thrown: &Thrown) -> ScriptErrorKind {
 }
 
 /// What was thrown, read into text while the context still holds it.
-struct Thrown {
+pub(crate) struct Thrown {
     /// An error's own `message`, with no name: what QuickJS's link failures
     /// are matched on.
     text: String,
     /// What a caller is shown: the message, prefixed with the error's name
     /// unless that is plain `Error`, so `throw new Error("boom")` reads as
     /// `boom` and a `TypeError` says that it is one.
-    message: String,
+    pub(crate) message: String,
     /// The project module `line` is in, unless that is the dashboard's script.
-    chunk: Option<String>,
-    line: Option<u32>,
+    pub(crate) chunk: Option<String>,
+    pub(crate) line: Option<u32>,
     /// The name, message and stack whole, for the event log.
     raw: String,
     /// Whether this is what QuickJS throws when an allocation is refused:
@@ -581,7 +647,7 @@ fn describe(ctx: &Ctx<'_>, error: rquickjs::Error, chunks: &Chunks) -> Thrown {
     }
 }
 
-fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, chunks: &Chunks) -> Thrown {
+pub(crate) fn describe_value<'js>(ctx: &Ctx<'js>, value: Value<'js>, chunks: &Chunks) -> Thrown {
     let read = |name: &str| -> Option<String> {
         let object = value.as_object()?;
         match object.get::<_, Option<Coerced<String>>>(name) {
