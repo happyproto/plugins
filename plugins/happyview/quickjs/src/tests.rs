@@ -1739,3 +1739,91 @@ it("breaks inside the module", () => { broken(); });"#,
     assert_eq!(reports[1].file.as_deref(), Some("src/lib/format.js"));
     assert_eq!(reports[1].line, Some(3));
 }
+
+fn failures(source: &str) -> Vec<(String, Option<u32>)> {
+    let (_, fake) = run_test_file(Fake::new(), source);
+    statuses(&fake)
+        .into_iter()
+        .filter(|r| r.1 == happyview_plugin_sdk::TestStatus::Fail)
+        .map(|r| (r.2.unwrap_or_default(), r.3))
+        .collect()
+}
+
+#[test]
+fn each_matcher_passes_and_fails_with_its_message_at_its_line() {
+    let got = failures(
+        r#"import { it, expect } from "internal.test";
+it("toBe", () => { expect(404).toBe(200); });
+it("toEqual", () => { expect({ a: [1, 3] }).toEqual({ a: [1, 2] }); });
+it("toBeTruthy", () => { expect(0).toBeTruthy(); });
+it("toBeNull", () => { expect(undefined).toBeNull(); });
+it("toContain", () => { expect([1, 2]).toContain(3); });
+it("toMatchObject", () => { expect({ a: 1, b: { c: 2 } }).toMatchObject({ b: { c: 3 } }); });
+it("toThrow", () => { expect(() => {}).toThrow(); });
+it("passes", () => {
+  expect("a").toBe("a");
+  expect({ a: [1, 2], b: undefined }).toEqual({ a: [1, 2] });
+  expect(1).toBeTruthy();
+  expect(null).toBeNull();
+  expect("hello").toContain("ell");
+  expect({ a: 1, b: { c: 2, d: 3 } }).toMatchObject({ b: { c: 2 } });
+  expect(() => { throw new Error("boom"); }).toThrow("oo");
+  expect(() => { throw new TypeError("x"); }).toThrow(TypeError);
+});"#,
+    );
+    assert_eq!(
+        got,
+        vec![
+            ("expected 200, got 404".to_string(), Some(2)),
+            (r#"expected {"a":[1,2]}, got {"a":[1,3]}"#.to_string(), Some(3)),
+            ("expected a truthy value, got 0".to_string(), Some(4)),
+            ("expected null, got undefined".to_string(), Some(5)),
+            ("expected [1,2] to contain 3".to_string(), Some(6)),
+            (r#"expected {"a":1,"b":{"c":2}} to match {"b":{"c":3}}"#.to_string(), Some(7)),
+            ("expected a throw, got none".to_string(), Some(8)),
+        ]
+    );
+}
+
+#[test]
+fn resolves_and_rejects_settle_before_matching() {
+    let got = failures(
+        r#"import { it, expect } from "internal.test";
+it("resolves", async () => { await expect(Promise.resolve(1)).resolves.toBe(1); });
+it("rejects", async () => { await expect(Promise.reject(new Error("no"))).rejects.toThrow("no"); });
+it("resolved instead", async () => { await expect(Promise.resolve(1)).rejects.toThrow(); });
+it("rejected instead", async () => { await expect(Promise.reject(new Error("no"))).resolves.toBe(1); });"#,
+    );
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!(got[0], ("expected the promise to reject, it resolved with 1".to_string(), Some(4)));
+    assert_eq!(
+        got[1],
+        ("expected the promise to resolve, it rejected with Error: no".to_string(), Some(5))
+    );
+}
+
+#[test]
+fn a_resolves_failure_is_placed_at_the_expect() {
+    let got = failures(
+        r#"import { it, expect } from "internal.test";
+it("late", async () => {
+  await Promise.resolve();
+  await expect(Promise.resolve(2)).resolves.toBe(1);
+});"#,
+    );
+    assert_eq!(got, vec![("expected 1, got 2".to_string(), Some(4))]);
+}
+
+#[test]
+fn a_failure_in_a_helper_is_placed_at_the_helpers_line() {
+    let got = failures(
+        r#"import { it, expect } from "internal.test";
+function check(status) {
+  expect(status).toBe(200);
+}
+it("uses a helper", () => {
+  check(500);
+});"#,
+    );
+    assert_eq!(got, vec![("expected 200, got 500".to_string(), Some(3))]);
+}
