@@ -32,7 +32,8 @@ const EXPECTED_EXPORTS: &[&str] = &[
 /// The four bridge imports — a call, a call started and a wait on started
 /// ones for `internal.async`, and the surface — the four `script:host` ones,
 /// and the fifth `script:host` import, which resolves a relative `require`
-/// against the run's project. An interpreter needs no other host function:
+/// against the run's project, plus the five test runner imports, which answer
+/// only inside a test file's run. An interpreter needs no other host function:
 /// everything a script can reach arrives through `require`.
 const ALLOWED_ENV_IMPORTS: &[&str] = &[
     "host_call_library",
@@ -44,6 +45,11 @@ const ALLOWED_ENV_IMPORTS: &[&str] = &[
     "host_job_wait",
     "host_module_resolve",
     "host_script_log",
+    "host_test_calls",
+    "host_test_mock",
+    "host_test_pds_writes",
+    "host_test_report",
+    "host_test_trigger",
 ];
 
 /// Imports the module must carry. `ALLOWED_ENV_IMPORTS` is an allow-list, so

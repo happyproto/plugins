@@ -13,6 +13,7 @@
   "capabilities": [
     "library:call",
     "script:host",
+    "script:test",
     "wasi:clock",
     "wasi:random",
     "wasi:stdio"
