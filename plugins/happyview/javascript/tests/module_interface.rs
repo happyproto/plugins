@@ -34,7 +34,8 @@ const EXPECTED_EXPORTS: &[&str] = &[
 /// of them — and the five `script:host` ones. An interpreter needs no other
 /// host function: everything a script can reach arrives through `import`.
 /// `host_module_resolve`, the fifth `script:host` import, answers a relative
-/// import from the run's project.
+/// import from the run's project, plus the five test runner imports, which
+/// answer only inside a test file's run.
 const EXPECTED_ENV_IMPORTS: &[&str] = &[
     "host_call_library_start",
     "host_call_library_wait_any",
@@ -44,6 +45,11 @@ const EXPECTED_ENV_IMPORTS: &[&str] = &[
     "host_job_wait",
     "host_module_resolve",
     "host_script_log",
+    "host_test_calls",
+    "host_test_mock",
+    "host_test_pds_writes",
+    "host_test_report",
+    "host_test_trigger",
 ];
 
 /// Exactly what `wasi:clock`, `wasi:random` and `wasi:stdio` grant, and none
