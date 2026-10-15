@@ -55,11 +55,13 @@ it.skip = function skip(name) {
 };
 
 export function beforeEach(fn) {
+  if (running) throw new Error("beforeEach cannot be called inside a running test");
   needsFunction("beforeEach", fn);
   current.before.push(fn);
 }
 
 export function afterEach(fn) {
+  if (running) throw new Error("afterEach cannot be called inside a running test");
   needsFunction("afterEach", fn);
   current.after.push(fn);
 }
