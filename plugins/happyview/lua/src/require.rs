@@ -43,6 +43,11 @@ pub fn plugin_error(label: &str, error: PluginError) -> mlua::Error {
 const HOST_RENDERED: &str = "LIBRARY_ERROR";
 
 fn missing_module(name: &str) -> mlua::Error {
+    if name == crate::test::MODULE {
+        return mlua::Error::runtime(format!(
+            "module '{name}' is available only in test files (*.test.lua)"
+        ));
+    }
     if name.starts_with(builtins::PREFIX) {
         return mlua::Error::runtime(format!(
             "module '{name}' not found -- built-in modules are: {}",
@@ -52,6 +57,20 @@ fn missing_module(name: &str) -> mlua::Error {
     mlua::Error::runtime(format!(
         "module '{name}' not found -- is the '{name}' library plugin installed?"
     ))
+}
+
+/// Serve `module` for `name` without a lookup. Validation runs under the stub
+/// `require`, which created no cache, so one is made if absent.
+pub fn preload(lua: &Lua, name: &str, module: Table) -> LuaResult<()> {
+    let loaded = match lua.named_registry_value::<Option<Table>>(LOADED_KEY)? {
+        Some(loaded) => loaded,
+        None => {
+            let loaded = lua.create_table()?;
+            lua.set_named_registry_value(LOADED_KEY, &loaded)?;
+            loaded
+        }
+    };
+    loaded.raw_set(name, module)
 }
 
 /// Install `require` for a run. Resolution is synchronous because every host
