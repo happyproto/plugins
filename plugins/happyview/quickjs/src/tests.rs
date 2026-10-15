@@ -645,6 +645,30 @@ fn a_host_that_refuses_a_wait_is_the_interpreter_failing() {
         fn job_wait(&self, s: f64) -> Result<(), PluginError> {
             self.0.job_wait(s)
         }
+        fn test_trigger(
+            &self,
+            spec: &happyview_plugin_sdk::TestTrigger,
+        ) -> Result<happyview_plugin_sdk::TestTriggerResult, PluginError> {
+            self.0.test_trigger(spec)
+        }
+        fn test_mock(&self, spec: &happyview_plugin_sdk::TestMock) -> Result<(), PluginError> {
+            self.0.test_mock(spec)
+        }
+        fn test_calls(
+            &self,
+            spec: &happyview_plugin_sdk::TestCalls,
+        ) -> Result<Vec<happyview_plugin_sdk::TestCall>, PluginError> {
+            self.0.test_calls(spec)
+        }
+        fn test_pds_writes(&self) -> Result<Vec<happyview_plugin_sdk::TestPdsWrite>, PluginError> {
+            self.0.test_pds_writes()
+        }
+        fn test_report(
+            &self,
+            report: &happyview_plugin_sdk::TestReport,
+        ) -> Result<(), PluginError> {
+            self.0.test_report(report)
+        }
     }
     let input = input(
         "import db from 'happyview.db';\nexport default () => db.get('x');",
@@ -1536,4 +1560,18 @@ fn a_module_that_failed_to_compile_fails_the_same_way_when_imported_again() {
         value[0].as_str().unwrap().starts_with("SyntaxError"),
         "{value}"
     );
+}
+
+#[test]
+fn the_fake_records_test_requests() {
+    let fake = Fake::new().answering(happyview_plugin_sdk::TestTriggerResult {
+        status: 201,
+        body: json!({"ok": true}),
+    });
+    let spec: happyview_plugin_sdk::TestTrigger =
+        serde_json::from_value(json!({"kind": "query", "target": "a.b.c"})).unwrap();
+    assert_eq!(fake.test_trigger(&spec).unwrap().status, 201);
+    assert_eq!(fake.triggers.borrow().len(), 1);
+    let refusing = Fake::new().refusing_triggers();
+    assert_eq!(refusing.test_trigger(&spec).unwrap_err().code, "BAD_INPUT");
 }
