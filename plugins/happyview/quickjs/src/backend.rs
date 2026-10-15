@@ -5,7 +5,8 @@
 
 use happyview_plugin_sdk::{
     host, ApiSurface, JobProgressRequest, ModuleResolve, PluginError, ResolvedModule,
-    ScriptLogRequest, Value as Json,
+    ScriptLogRequest, TestCall, TestCalls, TestMock, TestPdsWrite, TestReport, TestTrigger,
+    TestTriggerResult, Value as Json,
 };
 
 pub trait Backend {
@@ -26,6 +27,12 @@ pub trait Backend {
     fn job_progress(&self, request: &JobProgressRequest) -> Result<(), PluginError>;
     fn job_should_stop(&self) -> Result<bool, PluginError>;
     fn job_wait(&self, seconds: f64) -> Result<(), PluginError>;
+
+    fn test_trigger(&self, spec: &TestTrigger) -> Result<TestTriggerResult, PluginError>;
+    fn test_mock(&self, spec: &TestMock) -> Result<(), PluginError>;
+    fn test_calls(&self, spec: &TestCalls) -> Result<Vec<TestCall>, PluginError>;
+    fn test_pds_writes(&self) -> Result<Vec<TestPdsWrite>, PluginError>;
+    fn test_report(&self, report: &TestReport) -> Result<(), PluginError>;
 
     /// A relative import's module, from the run's project. The default is a
     /// run with no project, which is what validation is and what every test
@@ -79,6 +86,26 @@ impl Backend for Host {
     fn module_resolve(&self, request: &ModuleResolve) -> Result<ResolvedModule, PluginError> {
         host::module_resolve(request)
     }
+
+    fn test_trigger(&self, spec: &TestTrigger) -> Result<TestTriggerResult, PluginError> {
+        host::test_trigger(spec)
+    }
+
+    fn test_mock(&self, spec: &TestMock) -> Result<(), PluginError> {
+        host::test_mock(spec)
+    }
+
+    fn test_calls(&self, spec: &TestCalls) -> Result<Vec<TestCall>, PluginError> {
+        host::test_calls(spec)
+    }
+
+    fn test_pds_writes(&self) -> Result<Vec<TestPdsWrite>, PluginError> {
+        host::test_pds_writes()
+    }
+
+    fn test_report(&self, report: &TestReport) -> Result<(), PluginError> {
+        host::test_report(report)
+    }
 }
 
 /// What `validate` runs against. Validation reads no run, so it has no
@@ -114,6 +141,28 @@ impl Backend for Validating {
 
     fn job_wait(&self, _: f64) -> Result<(), PluginError> {
         Err(not_validating("a job"))
+    }
+
+    fn test_trigger(&self, _: &TestTrigger) -> Result<TestTriggerResult, PluginError> {
+        Err(not_validating("a trigger"))
+    }
+
+    fn test_mock(&self, _: &TestMock) -> Result<(), PluginError> {
+        Err(not_validating("a mock"))
+    }
+
+    fn test_calls(&self, _: &TestCalls) -> Result<Vec<TestCall>, PluginError> {
+        Err(not_validating("recorded calls"))
+    }
+
+    fn test_pds_writes(&self) -> Result<Vec<TestPdsWrite>, PluginError> {
+        Err(not_validating("PDS writes"))
+    }
+
+    /// File scope runs, and a test declared there reports nothing until a
+    /// run, so there is nothing to refuse.
+    fn test_report(&self, _: &TestReport) -> Result<(), PluginError> {
+        Ok(())
     }
 }
 
@@ -169,6 +218,11 @@ pub mod fake {
         /// Every module request as `(specifier, referrer)`, in the order
         /// asked.
         pub resolved: RefCell<Vec<(String, String)>>,
+        pub reports: RefCell<Vec<TestReport>>,
+        pub triggers: RefCell<Vec<TestTrigger>>,
+        pub mocks: RefCell<Vec<TestMock>>,
+        answer: RefCell<TestTriggerResult>,
+        refuse_triggers: Cell<bool>,
     }
 
     impl Default for Fake {
@@ -195,7 +249,27 @@ pub mod fake {
                 modules: BTreeMap::new(),
                 extension: "js",
                 resolved: RefCell::new(Vec::new()),
+                reports: RefCell::new(Vec::new()),
+                triggers: RefCell::new(Vec::new()),
+                mocks: RefCell::new(Vec::new()),
+                answer: RefCell::new(TestTriggerResult {
+                    status: 200,
+                    body: Json::Null,
+                }),
+                refuse_triggers: Cell::new(false),
             }
+        }
+
+        /// Answer every trigger with `result`.
+        pub fn answering(self, result: TestTriggerResult) -> Self {
+            *self.answer.borrow_mut() = result;
+            self
+        }
+
+        /// Refuse every trigger, as the host does one it cannot fire.
+        pub fn refusing_triggers(self) -> Self {
+            self.refuse_triggers.set(true);
+            self
         }
 
         pub fn surface(mut self, id: &str, surface: ApiSurface) -> Self {
@@ -331,6 +405,37 @@ pub mod fake {
                     ),
                 )
             })
+        }
+
+        fn test_trigger(&self, spec: &TestTrigger) -> Result<TestTriggerResult, PluginError> {
+            self.triggers.borrow_mut().push(spec.clone());
+            if self.refuse_triggers.get() {
+                return Err(PluginError::bad_input(
+                    "com.example.unknown has no record lexicon in this project",
+                ));
+            }
+            Ok(self.answer.borrow().clone())
+        }
+
+        fn test_mock(&self, spec: &TestMock) -> Result<(), PluginError> {
+            self.mocks.borrow_mut().push(spec.clone());
+            Ok(())
+        }
+
+        fn test_calls(&self, _: &TestCalls) -> Result<Vec<TestCall>, PluginError> {
+            Ok(vec![TestCall {
+                method: "get".into(),
+                args: serde_json::json!(["https://example.com"]),
+            }])
+        }
+
+        fn test_pds_writes(&self) -> Result<Vec<TestPdsWrite>, PluginError> {
+            Ok(Vec::new())
+        }
+
+        fn test_report(&self, report: &TestReport) -> Result<(), PluginError> {
+            self.reports.borrow_mut().push(report.clone());
+            Ok(())
         }
     }
 
