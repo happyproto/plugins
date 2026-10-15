@@ -4,12 +4,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use happyview_plugin_sdk::{TestReport, TestStatus};
+use happyview_plugin_sdk::{
+    TestCalls, TestMock, TestReport, TestStatus, TestTrigger, TestTriggerKind,
+};
 use rquickjs::module::Declared;
 use rquickjs::{Ctx, Function, Module, Object, Persistent, Result, Value};
 
 use crate::backend::Backend;
 use crate::builtins::throw_error;
+use crate::convert;
 use crate::imports::Project;
 
 pub const MODULE: &str = "internal.test";
@@ -124,6 +127,86 @@ impl Suite {
             )?,
         )?;
 
+        let b = backend.clone();
+        host.set(
+            "trigger",
+            Function::new(
+                ctx.clone(),
+                move |ctx: Ctx<'js>, spec: Value<'js>| -> Result<Value<'js>> {
+                    let spec: TestTrigger = from_js(&ctx, spec, "test")?;
+                    match b.test_trigger(&spec) {
+                        Ok(result) => {
+                            convert::to_js(&ctx, &serde_json::to_value(result).unwrap_or_default())
+                        }
+                        Err(error) => Err(throw_error(
+                            &ctx,
+                            &format!("{}: {}", trigger_label(spec.kind), error.message),
+                        )),
+                    }
+                },
+            )?,
+        )?;
+
+        let b = backend.clone();
+        host.set(
+            "mock",
+            Function::new(
+                ctx.clone(),
+                move |ctx: Ctx<'js>, spec: Value<'js>| -> Result<()> {
+                    let spec: TestMock = from_js(&ctx, spec, "test.mock")?;
+                    b.test_mock(&spec)
+                        .map_err(|e| throw_error(&ctx, &format!("test.mock: {}", e.message)))
+                },
+            )?,
+        )?;
+
+        let b = backend.clone();
+        host.set(
+            "calls",
+            Function::new(
+                ctx.clone(),
+                move |ctx: Ctx<'js>, spec: Value<'js>| -> Result<Value<'js>> {
+                    let spec: TestCalls = from_js(&ctx, spec, "test.calls")?;
+                    let calls = b
+                        .test_calls(&spec)
+                        .map_err(|e| throw_error(&ctx, &format!("test.calls: {}", e.message)))?;
+                    convert::to_js(&ctx, &serde_json::to_value(calls).unwrap_or_default())
+                },
+            )?,
+        )?;
+
+        let b = backend.clone();
+        host.set(
+            "pdsWrites",
+            Function::new(ctx.clone(), move |ctx: Ctx<'js>| -> Result<Value<'js>> {
+                let writes = b
+                    .test_pds_writes()
+                    .map_err(|e| throw_error(&ctx, &format!("test.pdsWrites: {}", e.message)))?;
+                convert::to_js(&ctx, &serde_json::to_value(writes).unwrap_or_default())
+            })?,
+        )?;
+
         Ok(host)
+    }
+}
+
+fn from_js<'js, T: serde::de::DeserializeOwned>(
+    ctx: &Ctx<'js>,
+    value: Value<'js>,
+    label: &str,
+) -> Result<T> {
+    let json = convert::to_json(ctx, value)?;
+    serde_json::from_value(json).map_err(|e| throw_error(ctx, &format!("{label}: {e}")))
+}
+
+fn trigger_label(kind: TestTriggerKind) -> &'static str {
+    match kind {
+        TestTriggerKind::Query => "test.query",
+        TestTriggerKind::Procedure => "test.procedure",
+        TestTriggerKind::RecordCreate => "test.recordCreate",
+        TestTriggerKind::RecordUpdate => "test.recordUpdate",
+        TestTriggerKind::RecordDelete => "test.recordDelete",
+        TestTriggerKind::Job => "test.job",
+        TestTriggerKind::Label => "test.label",
     }
 }

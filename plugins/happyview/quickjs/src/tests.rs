@@ -1775,11 +1775,17 @@ it("passes", () => {
         got,
         vec![
             ("expected 200, got 404".to_string(), Some(2)),
-            (r#"expected {"a":[1,2]}, got {"a":[1,3]}"#.to_string(), Some(3)),
+            (
+                r#"expected {"a":[1,2]}, got {"a":[1,3]}"#.to_string(),
+                Some(3)
+            ),
             ("expected a truthy value, got 0".to_string(), Some(4)),
             ("expected null, got undefined".to_string(), Some(5)),
             ("expected [1,2] to contain 3".to_string(), Some(6)),
-            (r#"expected {"a":1,"b":{"c":2}} to match {"b":{"c":3}}"#.to_string(), Some(7)),
+            (
+                r#"expected {"a":1,"b":{"c":2}} to match {"b":{"c":3}}"#.to_string(),
+                Some(7)
+            ),
             ("expected a throw, got none".to_string(), Some(8)),
         ]
     );
@@ -1795,10 +1801,19 @@ it("resolved instead", async () => { await expect(Promise.resolve(1)).rejects.to
 it("rejected instead", async () => { await expect(Promise.reject(new Error("no"))).resolves.toBe(1); });"#,
     );
     assert_eq!(got.len(), 2, "{got:?}");
-    assert_eq!(got[0], ("expected the promise to reject, it resolved with 1".to_string(), Some(4)));
+    assert_eq!(
+        got[0],
+        (
+            "expected the promise to reject, it resolved with 1".to_string(),
+            Some(4)
+        )
+    );
     assert_eq!(
         got[1],
-        ("expected the promise to resolve, it rejected with Error: no".to_string(), Some(5))
+        (
+            "expected the promise to resolve, it rejected with Error: no".to_string(),
+            Some(5)
+        )
     );
 }
 
@@ -1826,4 +1841,68 @@ it("uses a helper", () => {
 });"#,
     );
     assert_eq!(got, vec![("expected 200, got 500".to_string(), Some(3))]);
+}
+
+#[test]
+fn trigger_calls_reach_the_host_with_the_wire_shape() {
+    use happyview_plugin_sdk::TestTriggerKind;
+    let (_, fake) = run_test_file(
+        Fake::new().answering(happyview_plugin_sdk::TestTriggerResult {
+            status: 200,
+            body: json!({"thing": 1}),
+        }),
+        r#"import { it, expect, test } from "internal.test";
+it("query", async () => {
+  const res = await test.query("com.example.getThing", { id: "1" }, { as: "did:plc:alice" });
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ thing: 1 });
+});
+it("records, jobs and labels", async () => {
+  await test.recordCreate("com.example.thing", { did: "did:plc:alice", rkey: "1", record: { n: 1 } });
+  await test.recordDelete("com.example.thing", { rkey: "1" });
+  await test.job("export", { n: 1 });
+  await test.label("at://did:plc:alice/com.example.thing/1", { val: "spam" });
+});
+it("mocks", () => {
+  test.mock("http", { get: [{ status: 200 }] });
+  expect(test.calls("http")[0].method).toBe("get");
+  expect(test.pdsWrites()).toEqual([]);
+});"#,
+    );
+    let bad: Vec<_> = statuses(&fake)
+        .into_iter()
+        .filter(|r| r.1 != happyview_plugin_sdk::TestStatus::Pass)
+        .collect();
+    assert!(bad.is_empty(), "{bad:?}");
+    let triggers = fake.triggers.borrow();
+    assert_eq!(triggers[0].kind, TestTriggerKind::Query);
+    assert_eq!(triggers[0].as_did.as_deref(), Some("did:plc:alice"));
+    assert_eq!(triggers[1].kind, TestTriggerKind::RecordCreate);
+    assert_eq!(triggers[1].input, json!({"n": 1}));
+    assert_eq!(triggers[2].kind, TestTriggerKind::RecordDelete);
+    assert_eq!(triggers[2].input, json!(null));
+    assert_eq!(triggers[3].kind, TestTriggerKind::Job);
+    assert_eq!(triggers[4].input, json!({"val": "spam"}));
+    assert_eq!(
+        fake.mocks.borrow()[0].responses,
+        json!({"get": [{"status": 200}]})
+    );
+}
+
+#[test]
+fn a_host_refusal_fails_the_test_at_the_call() {
+    let (_, fake) = run_test_file(
+        Fake::new().refusing_triggers(),
+        r#"import { it, test } from "internal.test";
+it("untracked", async () => {
+  await test.recordCreate("com.example.unknown", { record: {} });
+});"#,
+    );
+    let got = statuses(&fake);
+    assert_eq!(got[0].1, happyview_plugin_sdk::TestStatus::Fail);
+    assert_eq!(
+        got[0].2.as_deref(),
+        Some("test.recordCreate: com.example.unknown has no record lexicon in this project")
+    );
+    assert_eq!(got[0].3, Some(3));
 }

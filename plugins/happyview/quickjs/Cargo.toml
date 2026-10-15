@@ -26,6 +26,7 @@ happyview-plugin-sdk.workspace = true
 # a sentence in an error. Nothing else is asked for, so neither
 # `quickjs-libc` nor an async executor is linked.
 rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "loader", "allocator"] }
+serde = { workspace = true }
 serde_json = "1"
 # The same formatter and parser the host's `internal.time` uses, so an ISO
 # 8601 string crosses unchanged. No `clock` feature: the clock is WASI's.
