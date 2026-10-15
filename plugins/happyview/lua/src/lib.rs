@@ -1098,6 +1098,96 @@ mod tests {
     }
 
     #[test]
+    fn a_throwing_after_each_fails_a_passing_test_but_keeps_an_earlier_failure() {
+        let (_, host) = run_test_file(
+            r#"describe("hooks", function()
+      after_each(function()
+        error("cleanup")
+      end)
+      it("failed", function()
+        error("first")
+      end)
+      it("passed", function() end)
+    end)"#,
+        );
+        let reports = host.reports.borrow();
+        assert_eq!(reports[0].status, happyview_plugin_sdk::TestStatus::Fail);
+        assert_eq!(reports[0].message.as_deref(), Some("first"));
+        assert_eq!(reports[0].line, Some(6));
+        assert_eq!(reports[1].status, happyview_plugin_sdk::TestStatus::Fail);
+        assert_eq!(reports[1].message.as_deref(), Some("cleanup"));
+        assert_eq!(reports[1].line, Some(3));
+    }
+
+    #[test]
+    fn an_assertion_outside_a_test_keeps_its_file_and_line() {
+        for (source, line) in [
+            ("local x = 1\nassert.are.equal(1, 2)", 2),
+            (
+                "describe(\"d\", function()\n  local x = 1\n  assert.are.equal(1, 2)\nend)",
+                3,
+            ),
+        ] {
+            let (output, _) = run_test_file(source);
+            match output {
+                ExecuteOutput::Error {
+                    chunk,
+                    line: got,
+                    message,
+                    ..
+                } => {
+                    assert_eq!(chunk.as_deref(), Some(TEST_FILE), "{source}");
+                    assert_eq!(got, Some(line), "{source}");
+                    assert_eq!(message, "expected 1, got 2", "{source}");
+                }
+                other => panic!("expected an error, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn hooks_nest_outer_first_and_a_failing_before_each_skips_the_body() {
+        let (_, host) = run_test_file(
+            r#"local seen = {}
+    describe("outer", function()
+      before_each(function() seen[#seen + 1] = "o-before" end)
+      after_each(function() seen[#seen + 1] = "o-after" end)
+      describe("inner", function()
+        before_each(function() seen[#seen + 1] = "i-before" end)
+        after_each(function() seen[#seen + 1] = "i-after" end)
+        it("a", function() seen[#seen + 1] = "a" end)
+        before_each(function() if #seen > 5 then error("stop") end end)
+        it("b", function() seen[#seen + 1] = "body-b" end)
+      end)
+      it("c", function()
+        if table.concat(seen, ",") ~= "o-before,i-before,a,i-after,o-after,o-before,i-before,i-after,o-after,o-before" then
+          error(table.concat(seen, ","))
+        end
+      end)
+    end)"#,
+        );
+        let reports = host.reports.borrow();
+        assert_eq!(reports[1].message.as_deref(), Some("stop"));
+        assert_eq!(
+            reports[2].status,
+            happyview_plugin_sdk::TestStatus::Pass,
+            "{:?}",
+            reports[2].message
+        );
+    }
+
+    #[test]
+    fn a_hook_cannot_be_registered_inside_a_running_test() {
+        let (_, host) = run_test_file(r#"it("outer", function() before_each(function() end) end)"#);
+        let reports = host.reports.borrow();
+        assert!(reports[0]
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("inside a running test"));
+    }
+
+    #[test]
     fn a_test_cannot_declare_another_test() {
         let (_, host) = run_test_file(r#"it("outer", function() it("inner", function() end) end)"#);
         let reports = host.reports.borrow();

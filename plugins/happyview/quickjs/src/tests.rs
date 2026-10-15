@@ -1687,6 +1687,76 @@ describe("hooks", () => {
 }
 
 #[test]
+fn a_throwing_after_each_fails_a_passing_test_but_keeps_an_earlier_failure() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (_, fake) = run_test_file(
+        Fake::new(),
+        r#"import { describe, it, afterEach } from "internal.test";
+describe("hooks", () => {
+  afterEach(() => {
+    throw new Error("cleanup");
+  });
+  it("failed", () => { throw new Error("first"); });
+  it("passed", () => {});
+});"#,
+    );
+    let got = statuses(&fake);
+    assert_eq!(
+        (got[0].1, got[0].2.as_deref(), got[0].3),
+        (Fail, Some("first"), Some(6))
+    );
+    assert_eq!(
+        (got[1].1, got[1].2.as_deref(), got[1].3),
+        (Fail, Some("cleanup"), Some(4))
+    );
+}
+
+#[test]
+fn hooks_nest_outer_first_and_a_failing_before_each_skips_the_body() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (_, fake) = run_test_file(
+        Fake::new(),
+        r#"import { describe, it, beforeEach, afterEach } from "internal.test";
+const seen = [];
+describe("outer", () => {
+  beforeEach(() => { seen.push("o-before"); });
+  afterEach(() => { seen.push("o-after"); });
+  describe("inner", () => {
+    beforeEach(() => { seen.push("i-before"); });
+    afterEach(() => { seen.push("i-after"); });
+    it("a", () => { seen.push("a"); });
+    beforeEach(() => { if (seen.length > 5) throw new Error("stop"); });
+    it("b", () => { seen.push("body-b"); });
+  });
+  it("c", () => {
+    const want = "o-before,i-before,a,i-after,o-after,o-before,i-before,i-after,o-after,o-before";
+    if (seen.join(",") !== want) throw new Error(seen.join(","));
+  });
+});"#,
+    );
+    let got = statuses(&fake);
+    assert_eq!((got[1].1, got[1].2.as_deref()), (Fail, Some("stop")));
+    assert_eq!(got[2].1, Pass, "{:?}", got[2].2);
+}
+
+#[test]
+fn a_hook_cannot_be_registered_inside_a_running_test() {
+    use happyview_plugin_sdk::TestStatus::*;
+    let (_, fake) = run_test_file(
+        Fake::new(),
+        r#"import { it, beforeEach } from "internal.test";
+it("outer", () => { beforeEach(() => {}); });"#,
+    );
+    let got = statuses(&fake);
+    assert_eq!(got[0].1, Fail);
+    assert!(got[0]
+        .2
+        .as_deref()
+        .unwrap()
+        .contains("inside a running test"));
+}
+
+#[test]
 fn internal_test_is_refused_outside_a_test_file() {
     let (kind, message, _, _) = failure_of(
         execute_script(&execute_input(
