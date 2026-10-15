@@ -163,9 +163,9 @@ fn unresolved(caller: &Caller, specifier: &str, error: PluginError) -> mlua::Err
 }
 
 /// Where a `require` call is written: the chunk, and the line it is on.
-struct Caller {
-    name: String,
-    line: Option<usize>,
+pub(crate) struct Caller {
+    pub(crate) name: String,
+    pub(crate) line: Option<usize>,
 }
 
 impl Caller {
@@ -186,7 +186,7 @@ impl Caller {
 /// (`pcall`, a wrapped coroutine) and the plugin's own `=`-named chunks are
 /// stepped over, so the importer is the file the call is written in however
 /// the call is reached. A `require` with no such frame is an error.
-fn caller(lua: &Lua) -> LuaResult<Caller> {
+pub(crate) fn caller(lua: &Lua) -> LuaResult<Caller> {
     let mut level = 0;
     while let Some((source, line)) = lua.inspect_stack(level, |debug| {
         (
@@ -230,7 +230,7 @@ pub fn known(lua: &Lua) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
     use std::rc::Rc;
@@ -247,13 +247,13 @@ mod tests {
     /// the importer's directory, with `.lua` added when the specifier has no
     /// extension. Every request is recorded.
     #[derive(Clone, Default)]
-    struct Files {
+    pub(crate) struct Files {
         files: Rc<BTreeMap<String, (String, Option<PreparedArtifact>)>>,
         asked: Rc<RefCell<Vec<(String, String)>>>,
     }
 
     impl Files {
-        fn new(files: &[(&str, &str)]) -> Self {
+        pub(crate) fn new(files: &[(&str, &str)]) -> Self {
             Self {
                 files: Rc::new(
                     files
@@ -265,7 +265,12 @@ mod tests {
             }
         }
 
-        fn with_artifact(mut self, id: &str, source: &str, artifact: PreparedArtifact) -> Self {
+        pub(crate) fn with_artifact(
+            mut self,
+            id: &str,
+            source: &str,
+            artifact: PreparedArtifact,
+        ) -> Self {
             Rc::make_mut(&mut self.files).insert(id.into(), (source.into(), Some(artifact)));
             self
         }

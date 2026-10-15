@@ -14,6 +14,7 @@ mod imports;
 mod modules;
 mod require;
 mod sandbox;
+mod test;
 
 use happyview_plugin_sdk::{
     interpreter_plugin, ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError,
