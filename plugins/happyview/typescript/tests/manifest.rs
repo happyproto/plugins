@@ -1,7 +1,8 @@
 //! The published manifest, which the host reads before it ever loads the
 //! module: the extensions a project file is matched to this interpreter by,
 //! and the capabilities its imports need. `host_module_resolve` is under
-//! `script:host`, so local modules add no capability.
+//! `script:host`, so local modules add no capability; the test runner's
+//! imports are `script:test`.
 
 use serde_json::{json, Value};
 
@@ -18,12 +19,13 @@ fn a_typescript_file_is_matched_to_this_interpreter_by_its_extension() {
 }
 
 #[test]
-fn local_modules_need_no_capability_beyond_the_five() {
+fn the_capabilities_are_exactly_what_the_imports_need() {
     assert_eq!(
         manifest()["capabilities"],
         json!([
             "library:call",
             "script:host",
+            "script:test",
             "wasi:clock",
             "wasi:random",
             "wasi:stdio"
