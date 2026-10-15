@@ -1,7 +1,11 @@
 {
   "extends": "../../../release/package-paths.mjs",
   "packagePaths": ["plugins/happyview/typescript", "plugins/happyview/quickjs"],
-  "branches": ["main"],
+  "branches": [
+    "main",
+    { "name": "beta", "prerelease": true },
+    { "name": "alpha", "prerelease": true }
+  ],
   "tagFormat": "happyview-typescript-v${version}",
   "plugins": [
     "@semantic-release/commit-analyzer",

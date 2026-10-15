@@ -1,6 +1,10 @@
 {
   "extends": "semantic-release-monorepo",
-  "branches": ["main"],
+  "branches": [
+    "main",
+    { "name": "beta", "prerelease": true },
+    { "name": "alpha", "prerelease": true }
+  ],
   "tagFormat": "happyview-atproto-v${version}",
   "plugins": [
     "@semantic-release/commit-analyzer",
