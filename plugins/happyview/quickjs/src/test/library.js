@@ -129,4 +129,142 @@ async function run() {
   return counts;
 }
 
+function show(value) {
+  if (value === undefined) return "undefined";
+  if (typeof value === "function") return `[Function ${value.name || "anonymous"}]`;
+  if (typeof value === "bigint") return `${value}n`;
+  if (value instanceof Error) return `${value.name}: ${value.message}`;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isPlain(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// toEqual ignores a property whose value is undefined, as Vitest's does.
+function equal(a, b) {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => equal(v, b[i]));
+  }
+  if (isPlain(a) && isPlain(b)) {
+    const keys = (o) => Object.keys(o).filter((k) => o[k] !== undefined);
+    const ka = keys(a);
+    const kb = keys(b);
+    return ka.length === kb.length && ka.every((k) => equal(a[k], b[k]));
+  }
+  return false;
+}
+
+function matches(actual, expected) {
+  if (isPlain(expected)) {
+    return isPlain(actual) && Object.keys(expected).every((k) => matches(actual[k], expected[k]));
+  }
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual) && actual.length === expected.length && expected.every((v, i) => matches(actual[i], v));
+  }
+  return Object.is(actual, expected);
+}
+
+function fail(message) {
+  throw new AssertionError(message);
+}
+
+function matchers(actual, rejected) {
+  return {
+    toBe(expected) {
+      if (!Object.is(actual, expected)) fail(`expected ${show(expected)}, got ${show(actual)}`);
+    },
+    toEqual(expected) {
+      if (!equal(actual, expected)) fail(`expected ${show(expected)}, got ${show(actual)}`);
+    },
+    toBeTruthy() {
+      if (!actual) fail(`expected a truthy value, got ${show(actual)}`);
+    },
+    toBeNull() {
+      if (actual !== null) fail(`expected null, got ${show(actual)}`);
+    },
+    toContain(item) {
+      const found = typeof actual === "string"
+        ? typeof item === "string" && actual.includes(item)
+        : Array.isArray(actual) && actual.some((v) => Object.is(v, item));
+      if (!found) fail(`expected ${show(actual)} to contain ${show(item)}`);
+    },
+    toMatchObject(expected) {
+      if (!matches(actual, expected)) fail(`expected ${show(actual)} to match ${show(expected)}`);
+    },
+    // Under rejects, the value is already what was thrown.
+    toThrow(expected) {
+      let threw = rejected;
+      let thrown = actual;
+      if (!rejected) {
+        if (typeof actual !== "function") fail("toThrow needs a function to call");
+        try {
+          actual();
+        } catch (e) {
+          threw = true;
+          thrown = e;
+        }
+      }
+      if (!threw) fail("expected a throw, got none");
+      if (expected === undefined) return;
+      const message = thrown instanceof Error ? thrown.message : String(thrown);
+      const ok = typeof expected === "string"
+        ? message.includes(expected)
+        : expected instanceof RegExp
+          ? expected.test(message)
+          : typeof expected === "function" && thrown instanceof expected;
+      if (!ok) fail(`expected a throw matching ${show(expected)}, got ${show(message)}`);
+    },
+  };
+}
+
+const MATCHERS = ["toBe", "toEqual", "toBeTruthy", "toBeNull", "toContain", "toMatchObject", "toThrow"];
+
+// Each matcher settles first. The test's own frame is on the stack only
+// when the matcher is called, before any await, so the place a failure is
+// reported at is taken then and given to the failure.
+function settled(settle) {
+  const out = {};
+  for (const name of MATCHERS) {
+    out[name] = (...args) => {
+      const site = new Error();
+      return settle()
+        .then((m) => m[name](...args))
+        .catch((e) => {
+          if (e instanceof AssertionError) e.stack = site.stack;
+          throw e;
+        });
+    };
+  }
+  return out;
+}
+
+export function expect(actual) {
+  const now = matchers(actual, false);
+  now.resolves = settled(async () => {
+    let value;
+    try {
+      value = await actual;
+    } catch (e) {
+      fail(`expected the promise to resolve, it rejected with ${show(e)}`);
+    }
+    return matchers(value, false);
+  });
+  now.rejects = settled(async () => {
+    let value;
+    try {
+      value = await actual;
+    } catch (e) {
+      return matchers(e, true);
+    }
+    fail(`expected the promise to reject, it resolved with ${show(value)}`);
+  });
+  return now;
+}
+
 host.register(run);
