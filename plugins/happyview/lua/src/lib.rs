@@ -18,7 +18,8 @@ mod test;
 
 use happyview_plugin_sdk::{
     interpreter_plugin, ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError,
-    PluginInfo, ScriptErrorKind, ScriptValueKind, ValidateError, ValidateInput, ValidateOutput,
+    PluginInfo, ScriptErrorKind, ScriptKind, ScriptValueKind, ValidateError, ValidateInput,
+    ValidateOutput,
 };
 
 const MISSING_HANDLE: &str = "script must define a handle() function";
@@ -47,6 +48,16 @@ pub(crate) fn execute_with(
     input: &ExecuteInput,
     resolver: Box<dyn modules::Resolver>,
 ) -> Result<ExecuteOutput, PluginError> {
+    execute_in(input, resolver, std::rc::Rc::new(test::Host))
+}
+
+/// [`execute_with`] with the host a test file reports to chosen as well, so a
+/// native test can record what a test file reported.
+pub(crate) fn execute_in(
+    input: &ExecuteInput,
+    resolver: Box<dyn modules::Resolver>,
+    tests: std::rc::Rc<dyn test::TestHost>,
+) -> Result<ExecuteOutput, PluginError> {
     let lua = sandbox::create(&input.removed_globals).map_err(interpreter_error)?;
     // The budget goes first: `internal.async` resumes through the catch guard
     // it installs, and takes it when `require` is installed.
@@ -55,6 +66,15 @@ pub(crate) fn execute_with(
     modules::install(&lua, &input.chunk_name, resolver).map_err(interpreter_error)?;
     let failed =
         |default, e: &mlua::Error| script_failure(default, e, &budget, &modules::known(&lua));
+
+    // A test file's globals exist before its chunk runs, since `describe` is
+    // called at file scope.
+    let suite = match input.kind {
+        ScriptKind::Test => {
+            Some(test::install(&lua, tests, &input.chunk_name).map_err(interpreter_error)?)
+        }
+        _ => None,
+    };
 
     let main = chunk::load(
         &lua,
@@ -66,6 +86,18 @@ pub(crate) fn execute_with(
     if let Err(e) = main.and_then(|main| main.call::<()>(())) {
         return Ok(failed(load_failure_kind(&e), &e));
     }
+
+    // A test file has no `handle`: running its collected tests is the run.
+    if let Some(suite) = suite {
+        return Ok(match suite.run(&lua) {
+            Ok(counts) => ExecuteOutput::Returned {
+                value: counts,
+                value_kind: ScriptValueKind::Object,
+            },
+            Err(e) => failed(ScriptErrorKind::Runtime, &e),
+        });
+    }
+
     let Ok(handle) = lua.globals().get::<mlua::Function>("handle") else {
         return Ok(failure(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
     };
@@ -106,6 +138,9 @@ fn validate_source(input: &ValidateInput) -> Result<ValidateOutput, PluginError>
     require::install_stub(&lua).map_err(interpreter_error)?;
     let budget = budget::install(&lua, &VALIDATE_LIMITS).map_err(interpreter_error)?;
     let name = input.chunk_name.as_deref().unwrap_or(chunk::DEFAULT);
+    if input.role == ChunkRole::Test {
+        test::install(&lua, std::rc::Rc::new(test::Validating), name).map_err(interpreter_error)?;
+    }
     let refused = |e: mlua::Error| {
         let kind = if budget.is_spent() {
             ScriptErrorKind::Timeout
@@ -927,5 +962,192 @@ mod tests {
         let validated = validate_source(&validate_input("local x = 1", &[])).unwrap();
         assert!(!validated.valid);
         assert_eq!(validated.errors[0].kind, ScriptErrorKind::MissingHandle);
+    }
+
+    const TEST_FILE: &str = "src/lib/a.test.lua";
+
+    fn test_file_input(source: &str) -> ExecuteInput {
+        serde_json::from_value(json!({
+            "source": source,
+            "kind": "test",
+            "input": null,
+            "context": {"trigger": format!("test:{TEST_FILE}")},
+            "limits": {"instructions": null, "memory_bytes": 67_108_864},
+            "chunk_name": TEST_FILE,
+        }))
+        .unwrap()
+    }
+
+    /// A test file run against `files`, an in-memory project, reporting to a
+    /// recording host.
+    fn run_test_file_in(
+        files: &[(&str, &str)],
+        host: std::rc::Rc<test::Recording>,
+        source: &str,
+    ) -> ExecuteOutput {
+        execute_in(
+            &test_file_input(source),
+            Box::new(modules::tests::Files::new(files)),
+            host,
+        )
+        .unwrap()
+    }
+
+    fn run_test_file(source: &str) -> (ExecuteOutput, std::rc::Rc<test::Recording>) {
+        let host = std::rc::Rc::new(test::Recording::default());
+        let output = run_test_file_in(&[], host.clone(), source);
+        (output, host)
+    }
+
+    #[test]
+    fn a_test_file_reports_every_test_by_its_full_name() {
+        let (output, host) = run_test_file(
+            r#"describe("format", function()
+      it("joins", function() end)
+      describe("nested", function()
+        it("still runs", function() end)
+      end)
+    end)
+    pending("later")"#,
+        );
+        assert_eq!(
+            output,
+            ExecuteOutput::Returned {
+                value: json!({"passed": 2, "failed": 0, "skipped": 1}),
+                value_kind: ScriptValueKind::Object,
+            }
+        );
+        let reports = host.reports.borrow();
+        let names: Vec<&str> = reports.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["format > joins", "format > nested > still runs", "later"]
+        );
+        assert_eq!(reports[2].status, happyview_plugin_sdk::TestStatus::Skip);
+        assert!(reports.iter().all(|r| r.path == TEST_FILE));
+    }
+
+    /// A module is unit-tested directly: the test file requires it by relative
+    /// path, as a handler would.
+    #[test]
+    fn a_test_file_requires_a_module_and_tests_it() {
+        let host = std::rc::Rc::new(test::Recording::default());
+        run_test_file_in(
+            &[(
+                "src/lib/format.lua",
+                "return { join = function(a, b) return a .. '-' .. b end }",
+            )],
+            host.clone(),
+            r#"local format = require("./format")
+    it("joins", function()
+      if format.join("a", "b") ~= "a-b" then error("joined wrong") end
+    end)"#,
+        );
+        let reports = host.reports.borrow();
+        assert_eq!(
+            reports[0].status,
+            happyview_plugin_sdk::TestStatus::Pass,
+            "{:?}",
+            reports[0].message
+        );
+    }
+
+    #[test]
+    fn a_runtime_error_fails_its_test_at_its_line_and_the_next_test_runs() {
+        let (_, host) = run_test_file(
+            r#"it("breaks", function()
+      local t = nil
+      return t.x
+    end)
+    it("runs anyway", function() end)"#,
+        );
+        let reports = host.reports.borrow();
+        assert_eq!(reports[0].status, happyview_plugin_sdk::TestStatus::Fail);
+        assert_eq!(reports[0].line, Some(3));
+        assert_eq!(reports[0].file.as_deref(), Some(TEST_FILE));
+        assert!(reports[0]
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("attempt to index a nil value"));
+        assert_eq!(reports[1].status, happyview_plugin_sdk::TestStatus::Pass);
+    }
+
+    #[test]
+    fn hooks_run_in_order_and_after_each_runs_after_a_failure() {
+        let (_, host) = run_test_file(
+            r#"local seen = {}
+    describe("hooks", function()
+      before_each(function() seen[#seen + 1] = "before" end)
+      after_each(function() seen[#seen + 1] = "after" end)
+      it("first", function() seen[#seen + 1] = "first" error("boom") end)
+      it("second", function()
+        if table.concat(seen, ",") ~= "before,first,after,before" then error(table.concat(seen, ",")) end
+      end)
+    end)"#,
+        );
+        let reports = host.reports.borrow();
+        assert_eq!(reports[0].status, happyview_plugin_sdk::TestStatus::Fail);
+        assert_eq!(reports[0].line, Some(5));
+        assert_eq!(
+            reports[1].status,
+            happyview_plugin_sdk::TestStatus::Pass,
+            "{:?}",
+            reports[1].message
+        );
+    }
+
+    #[test]
+    fn a_test_cannot_declare_another_test() {
+        let (_, host) = run_test_file(r#"it("outer", function() it("inner", function() end) end)"#);
+        let reports = host.reports.borrow();
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0]
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("inside a running test"));
+    }
+
+    #[test]
+    fn a_syntax_error_fails_the_file_rather_than_a_test() {
+        let (output, host) = run_test_file("describe(\"x\", function(");
+        assert!(matches!(
+            output,
+            ExecuteOutput::Error {
+                kind: ScriptErrorKind::Syntax,
+                ..
+            }
+        ));
+        assert!(host.reports.borrow().is_empty());
+    }
+
+    #[test]
+    fn internal_test_is_refused_outside_a_test_file() {
+        let output = execute_script(&execute_input(
+            r#"local t = require("internal.test") function handle() end"#,
+        ))
+        .unwrap();
+        let message = message_of(output);
+        assert!(message.contains("only in test files"), "{message}");
+    }
+
+    #[test]
+    fn a_test_file_validates_without_a_handle() {
+        let mut input = validate_input(
+            r#"describe("x", function() it("y", function() end) end)"#,
+            &[],
+        );
+        input.role = ChunkRole::Test;
+        input.chunk_name = Some(TEST_FILE.to_string());
+        assert!(
+            validate_source(&input).unwrap().valid,
+            "the globals exist while it validates"
+        );
+        input.role = ChunkRole::Handler;
+        assert!(
+            !validate_source(&input).unwrap().valid,
+            "a handler still needs handle"
+        );
     }
 }
