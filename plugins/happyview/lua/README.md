@@ -262,7 +262,7 @@ the Lua limit cannot see.
 
 ## Permissions
 
-Five, and what each one grants, in the words the install page shows. They are
+Six, and what each one grants, in the words the install page shows. They are
 copied from `PluginCapability::consent_sentence` in HappyView's
 `src/plugin/capabilities.rs`, which is the only place they are defined; no
 test spans the two repositories, so a change there has to be brought here by
@@ -272,14 +272,40 @@ hand.
 | --- | --- |
 | `library:call` | Call other installed library plugins, which run with their own permissions (not this plugin's). |
 | `script:host` | Log, report progress, check for a stop request, wait, and load the project's own modules on behalf of the script run it is inside; the host supplies the run's identity, job and files. |
+| `script:test` | Fire this project's triggers, mock its libraries and record results, only while the test command runs one of its test files. |
 | `wasi:clock` | Read the wall clock. |
 | `wasi:random` | Read secure random numbers. |
 | `wasi:stdio` | Write to this instance's plugin log. |
 
 The clock is what `os.time`, `os.date` and `internal.time` read; randomness is
 what a TID's clock id needs; and the log is where `print` goes. The module's
-import section is checked against these five at load, so it can reach nothing
-else.
+import section is checked against these six at load, so it can reach nothing
+else, and `script:test`'s imports answer only inside a test file's run.
+
+## Test files
+
+A `*.test.lua` file under a project's `src/` is run by `happyview test`. It defines no `handle`: `describe`, `it`, `before_each`, `after_each`, `pending` and `assert` are globals, as in busted, and the trigger calls come from `internal.test`, which only a test file can require.
+
+```lua
+local test = require("internal.test")
+
+describe("getThing", function()
+  before_each(function()
+    test.mock("http", { get = { status = 200, body = "{}" } })
+  end)
+
+  it("answers as the caller", function()
+    local res = test.query("com.example.getThing", { id = "1" }, { as = "did:plc:alice" })
+    assert.are.equal(200, res.status)
+  end)
+
+  it("indexes a record", function()
+    test.record_create("com.example.thing", { did = "did:plc:alice", record = { n = 1 } })
+  end)
+end)
+```
+
+Assertions: `assert(v, message)`, `assert.are.equal(expected, actual)`, `assert.are.same(expected, actual)` (deep), `assert.is_true`, `assert.is_false`, `assert.is_nil`, `assert.has_error(fn, message?)`. `internal.test` has `query`, `procedure`, `record_create`, `record_update`, `record_delete`, `job`, `label`, `mock`, `calls` and `pds_writes`; each trigger returns `{ status, body }`.
 
 ## Building
 
