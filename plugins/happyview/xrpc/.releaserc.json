@@ -1,5 +1,6 @@
 {
-  "extends": "semantic-release-monorepo",
+  "extends": "../../../release/package-paths.mjs",
+  "packagePaths": ["plugins/happyview/xrpc", "Cargo.lock"],
   "branches": ["main"],
   "tagFormat": "happyview-xrpc-v${version}",
   "plugins": [

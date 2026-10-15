@@ -31,6 +31,17 @@ test("every released plugin exports its release data", () => {
   }
 });
 
+test("every released plugin releases when the lockfile changes", () => {
+  // The SDK every plugin compiles against is pinned in the root Cargo.lock, so
+  // a re-pin changes each module without touching any plugin's directory.
+  for (const name of RELEASED) {
+    const config = readConfig(join(ROOT, name));
+    assert.equal(config.extends, "../../../release/package-paths.mjs", name);
+    assert.ok(config.packagePaths.includes(`plugins/happyview/${name}`), name);
+    assert.ok(config.packagePaths.includes("Cargo.lock"), name);
+  }
+});
+
 test("the version comes from the tag, not the plugin's name", () => {
   const config = { tagFormat: "happyview-sql-v${version}" };
   assert.equal(versionOfTag(config, "happyview-sql-v1.2.0"), "1.2.0");

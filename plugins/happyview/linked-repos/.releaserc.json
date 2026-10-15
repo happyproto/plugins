@@ -1,5 +1,6 @@
 {
-  "extends": "semantic-release-monorepo",
+  "extends": "../../../release/package-paths.mjs",
+  "packagePaths": ["plugins/happyview/linked-repos", "Cargo.lock"],
   "branches": ["main"],
   "tagFormat": "happyview-linked-repos-v${version}",
   "plugins": [

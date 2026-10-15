@@ -1,5 +1,6 @@
 {
-  "extends": "semantic-release-monorepo",
+  "extends": "../../../release/package-paths.mjs",
+  "packagePaths": ["plugins/happyview/auth-steam", "Cargo.lock"],
   "branches": ["main"],
   "tagFormat": "happyview-auth-steam-v${version}",
   "plugins": [

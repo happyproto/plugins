@@ -1,5 +1,6 @@
 {
-  "extends": "semantic-release-monorepo",
+  "extends": "../../../release/package-paths.mjs",
+  "packagePaths": ["plugins/happyview/http", "Cargo.lock"],
   "branches": ["main"],
   "tagFormat": "happyview-http-v${version}",
   "plugins": [
