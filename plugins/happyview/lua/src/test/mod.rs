@@ -5,7 +5,9 @@ mod host;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use happyview_plugin_sdk::{TestReport, TestStatus};
+use happyview_plugin_sdk::{
+    TestCalls, TestMock, TestReport, TestStatus, TestTrigger, TestTriggerKind,
+};
 use mlua::{Function, Lua, Result as LuaResult, Table, Value};
 
 use crate::convert;
@@ -25,6 +27,23 @@ pub(crate) fn location(lua: &Lua) -> (Option<String>, Option<u32>) {
             caller.line.and_then(|line| u32::try_from(line).ok()),
         ),
         Err(_) => (None, None),
+    }
+}
+
+/// What a raised value says. An error a Rust function raised reaches Lua
+/// wrapped, and its `tostring` prefixes the kind (`runtime error: `), which is
+/// mlua's rendering rather than anything the test or the host wrote.
+fn raised_text(lua: &Lua, raised: Value) -> LuaResult<String> {
+    fn message(error: &mlua::Error) -> String {
+        match error {
+            mlua::Error::RuntimeError(message) => message.clone(),
+            mlua::Error::CallbackError { cause, .. } => message(cause),
+            other => other.to_string(),
+        }
+    }
+    match raised {
+        Value::Error(error) => Ok(message(&error)),
+        other => lua.globals().get::<Function>("tostring")?.call(other),
     }
 }
 
@@ -85,6 +104,18 @@ fn host_error(label: &str, error: happyview_plugin_sdk::PluginError) -> mlua::Er
     mlua::Error::runtime(format!("{label}: {}", error.message))
 }
 
+fn trigger_label(kind: TestTriggerKind) -> &'static str {
+    match kind {
+        TestTriggerKind::Query => "test.query",
+        TestTriggerKind::Procedure => "test.procedure",
+        TestTriggerKind::RecordCreate => "test.record_create",
+        TestTriggerKind::RecordUpdate => "test.record_update",
+        TestTriggerKind::RecordDelete => "test.record_delete",
+        TestTriggerKind::Job => "test.job",
+        TestTriggerKind::Label => "test.label",
+    }
+}
+
 fn bindings(lua: &Lua, host: Rc<dyn TestHost>, chunk_name: &str) -> LuaResult<Table> {
     let t = lua.create_table()?;
     t.set("now", lua.create_function(|_, ()| Ok(now_millis()))?)?;
@@ -94,7 +125,7 @@ fn bindings(lua: &Lua, host: Rc<dyn TestHost>, chunk_name: &str) -> LuaResult<Ta
     )?;
     t.set(
         "split",
-        lua.create_function(|lua, text: String| Ok(split(lua, &text)))?,
+        lua.create_function(|lua, raised: Value| Ok(split(lua, &raised_text(lua, raised)?)))?,
     )?;
 
     let reporter = host.clone();
@@ -114,6 +145,53 @@ fn bindings(lua: &Lua, host: Rc<dyn TestHost>, chunk_name: &str) -> LuaResult<Ta
             reporter
                 .report(&report)
                 .map_err(|e| host_error("reporting a test", e))
+        })?,
+    )?;
+
+    let triggers = host.clone();
+    t.set(
+        "trigger",
+        lua.create_function(move |lua, spec: Table| {
+            let spec: TestTrigger =
+                serde_json::from_value(convert::to_json(lua, Value::Table(spec))?)
+                    .map_err(|e| mlua::Error::runtime(format!("test trigger: {e}")))?;
+            let label = trigger_label(spec.kind);
+            let result = triggers.trigger(&spec).map_err(|e| host_error(label, e))?;
+            convert::library_result(lua, &serde_json::to_value(result).unwrap_or_default())
+        })?,
+    )?;
+
+    let mocks = host.clone();
+    t.set(
+        "mock",
+        lua.create_function(move |lua, (namespace, responses): (String, Value)| {
+            let spec = TestMock {
+                namespace,
+                responses: convert::to_json(lua, responses)?,
+            };
+            mocks.mock(&spec).map_err(|e| host_error("test.mock", e))
+        })?,
+    )?;
+
+    let calls = host.clone();
+    t.set(
+        "calls",
+        lua.create_function(move |lua, namespace: String| {
+            let found = calls
+                .calls(&TestCalls { namespace })
+                .map_err(|e| host_error("test.calls", e))?;
+            convert::library_result(lua, &serde_json::to_value(found).unwrap_or_default())
+        })?,
+    )?;
+
+    let writes = host;
+    t.set(
+        "pds_writes",
+        lua.create_function(move |lua, ()| {
+            let found = writes
+                .pds_writes()
+                .map_err(|e| host_error("test.pds_writes", e))?;
+            convert::library_result(lua, &serde_json::to_value(found).unwrap_or_default())
         })?,
     )?;
     Ok(t)
