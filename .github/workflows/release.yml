@@ -44,6 +44,14 @@ jobs:
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
 
+      # Shared across every job and matrix entry keyed on the lockfile: the
+      # release matrix otherwise recompiles the same dependency tree once per
+      # plugin, from cold, in series.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm
+
       - name: Build all plugins
         run: cargo build --release --target wasm32-unknown-unknown
 
@@ -100,6 +108,11 @@ jobs:
       - name: Add WASI target
         run: rustup target add wasm32-wasip1
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasi-${{ matrix.crate }}
+
       # `/opt/wasi-sdk` is where `.cargo/config.toml` already points, so
       # `WASI_SDK`, the three `CC`/`AR`/`CFLAGS` variables and the linker's
       # `-L` need no setting here. Only `CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS`
@@ -150,9 +163,13 @@ jobs:
       pull-requests: write
 
     strategy:
-      # One at a time: semantic-release pushes a tag and a git note per plugin,
-      # and parallel pushes collide, leaving a tag with no release behind.
-      max-parallel: 1
+      # semantic-release pushes a tag and a git note per plugin. Those are
+      # distinct refs, so concurrent pushes do not race each other for the
+      # same one; what they can hit is the remote's own ref-lock contention,
+      # which is transient. A few at a time trades a small retry risk for not
+      # running eighteen cold builds end to end. If a tag ever lands with no
+      # release behind it, this is the knob — put it back to 1.
+      max-parallel: 4
       fail-fast: false
       matrix:
         plugin:
@@ -186,12 +203,21 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
       - name: Install modules
-        run: npm install
+        run: npm ci
 
       - name: Add WASM target
         run: rustup target add wasm32-unknown-unknown
+
+      # The same key the `build` job fills, so a plugin that does release
+      # compiles against a warm dependency tree instead of a cold one.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm
+          save-if: false
 
       # Only the interpreters need either of these, and their
       # `.releaserc.json` files are the ones that build for `wasm32-wasip1`.
