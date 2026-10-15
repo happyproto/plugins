@@ -1150,4 +1150,81 @@ mod tests {
             "a handler still needs handle"
         );
     }
+
+    fn failures(source: &str) -> Vec<(String, Option<u32>)> {
+        let (_, host) = run_test_file(source);
+        let reports = host.reports.borrow();
+        reports
+            .iter()
+            .filter(|r| r.status == happyview_plugin_sdk::TestStatus::Fail)
+            .map(|r| (r.message.clone().unwrap_or_default(), r.line))
+            .collect()
+    }
+
+    #[test]
+    fn each_assertion_passes_and_fails_with_its_message_at_its_line() {
+        let got = failures(
+            r#"it("equal", function() assert.are.equal(200, 404) end)
+    it("same", function() assert.are.same({ a = { 1, 2 } }, { a = { 1, 3 } }) end)
+    it("true", function() assert.is_true(1) end)
+    it("false", function() assert.is_false(nil) end)
+    it("nil", function() assert.is_nil("x") end)
+    it("plain", function() assert(false, "nope") end)
+    it("passes", function()
+      assert.are.equal("a", "a")
+      assert.are.same({ a = { 1, 2 }, b = "x" }, { b = "x", a = { 1, 2 } })
+      assert.is_true(true)
+      assert.is_false(false)
+      assert.is_nil(nil)
+      assert(1 == 1)
+    end)"#,
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("expected 200, got 404".to_string(), Some(1)),
+                (
+                    "expected { a = { 1, 2 } }, got { a = { 1, 3 } }".to_string(),
+                    Some(2)
+                ),
+                ("expected true, got 1".to_string(), Some(3)),
+                ("expected false, got nil".to_string(), Some(4)),
+                ("expected nil, got \"x\"".to_string(), Some(5)),
+                ("nope".to_string(), Some(6)),
+            ]
+        );
+    }
+
+    #[test]
+    fn has_error_checks_that_a_call_raises_and_optionally_what() {
+        let got = failures(
+            r#"it("raises", function() assert.has_error(function() error("boom") end) end)
+    it("matches", function() assert.has_error(function() error("boom") end, "boom") end)
+    it("none", function() assert.has_error(function() end) end)
+    it("other", function() assert.has_error(function() error("bang") end, "boom") end)"#,
+        );
+        assert_eq!(
+            got,
+            vec![
+                ("expected an error, got none".to_string(), Some(3)),
+                (
+                    "expected the error \"boom\", got \"bang\"".to_string(),
+                    Some(4)
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failure_in_a_helper_is_placed_at_the_helpers_line() {
+        let got = failures(
+            r#"local function check(status)
+      assert.are.equal(200, status)
+    end
+    it("uses a helper", function()
+      check(500)
+    end)"#,
+        );
+        assert_eq!(got, vec![("expected 200, got 500".to_string(), Some(2))]);
+    }
 }

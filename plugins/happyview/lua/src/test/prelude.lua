@@ -162,6 +162,136 @@ local function run()
   return counts
 end
 
+local function show(value, depth)
+  depth = depth or 0
+  local kind = type(value)
+  if kind == "string" then
+    return string.format("%q", value)
+  end
+  if kind ~= "table" then
+    return tostring(value)
+  end
+  if depth >= 3 then
+    return "{...}"
+  end
+  local parts = {}
+  local n = #value
+  for i = 1, n do
+    parts[#parts + 1] = show(value[i], depth + 1)
+  end
+  local keys = {}
+  for k in pairs(value) do
+    if not (math.type(k) == "integer" and k >= 1 and k <= n) then
+      keys[#keys + 1] = k
+    end
+  end
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+  for _, k in ipairs(keys) do
+    parts[#parts + 1] = tostring(k) .. " = " .. show(value[k], depth + 1)
+  end
+  if #parts == 0 then
+    return "{}"
+  end
+  return "{ " .. table.concat(parts, ", ") .. " }"
+end
+
+local function same(a, b, seen)
+  if a == b then
+    return true
+  end
+  if type(a) ~= "table" or type(b) ~= "table" then
+    return false
+  end
+  seen = seen or {}
+  if seen[a] == b then
+    return true
+  end
+  seen[a] = b
+  for k, v in pairs(a) do
+    if not same(v, b[k], seen) then
+      return false
+    end
+  end
+  for k in pairs(b) do
+    if a[k] == nil then
+      return false
+    end
+  end
+  return true
+end
+
+local function differ(expected, actual)
+  fail("expected " .. show(expected) .. ", got " .. show(actual))
+end
+
+local checks = { are = {} }
+
+function checks.are.equal(expected, actual)
+  if expected ~= actual then
+    differ(expected, actual)
+  end
+end
+
+function checks.are.same(expected, actual)
+  if not same(expected, actual) then
+    differ(expected, actual)
+  end
+end
+
+function checks.is_true(value)
+  if value ~= true then
+    differ(true, value)
+  end
+end
+
+function checks.is_false(value)
+  if value ~= false then
+    differ(false, value)
+  end
+end
+
+function checks.is_nil(value)
+  if value ~= nil then
+    differ(nil, value)
+  end
+end
+
+function checks.has_error(fn, expected)
+  if type(fn) ~= "function" then
+    fail("has_error needs a function to call")
+  end
+  local ok, err = pcall(fn)
+  if ok then
+    fail("expected an error, got none")
+  end
+  if expected == nil then
+    return
+  end
+  local message
+  if getmetatable(err) == Failure then
+    message = err.message
+  else
+    local _, _, text = host.split(tostring(err))
+    message = text
+  end
+  if message ~= expected then
+    fail("expected the error " .. show(expected) .. ", got " .. show(message))
+  end
+end
+
+-- Callable like Lua's own assert, so a test file that uses it plainly still
+-- reads as it would anywhere else.
+assert = setmetatable(checks, {
+  __call = function(_, value, message, ...)
+    if not value then
+      fail(message ~= nil and tostring(message) or "assertion failed!")
+    end
+    return value, message, ...
+  end,
+})
+
 local test = {}
 
 return run, test
