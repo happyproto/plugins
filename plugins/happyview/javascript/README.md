@@ -27,8 +27,33 @@ export default async function handle(input, ctx) {
 
 What a script can rely on — the contract, `ctx`, the built-in modules,
 `import` and the library bridge, conversion, the sandbox, the budgets, the
-error contract and the five permissions — is the engine's, and is written
+error contract and the six permissions — is the engine's, and is written
 down once, in [its README](../quickjs/README.md).
+
+## Test files
+
+A `*.test.js` file under a project's `src/` is run by `happyview test`. It exports nothing; everything comes from `internal.test`, which only a test file can import.
+
+```js
+import { describe, it, expect, beforeEach, test } from "internal.test";
+
+describe("getThing", () => {
+  beforeEach(() => {
+    test.mock("http", { get: { status: 200, body: "{}" } });
+  });
+
+  it("answers as the caller", async () => {
+    const res = await test.query("com.example.getThing", { id: "1" }, { as: "did:plc:alice" });
+    expect(res.status).toBe(200);
+  });
+
+  it("indexes a record", async () => {
+    await test.recordCreate("com.example.thing", { did: "did:plc:alice", record: { n: 1 } });
+  });
+});
+```
+
+`expect(x)` has `toBe`, `toEqual`, `toBeTruthy`, `toBeNull`, `toThrow`, `toContain` and `toMatchObject`, and `.resolves` / `.rejects` for a promise. `it.skip` reports a skipped test. `test` has `query`, `procedure`, `recordCreate`, `recordUpdate`, `recordDelete`, `job` and `label`, each a promise of `{ status, body }`, plus `mock`, `calls` and `pdsWrites`. A failure is reported at its line in this file.
 
 ## Building
 

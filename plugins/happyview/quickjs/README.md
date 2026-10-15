@@ -300,7 +300,7 @@ bytecode artifact.
 
 ## Permissions
 
-Five, declared by every plugin built on the engine, and what each one grants,
+Six, declared by every plugin built on the engine, and what each one grants,
 in the words the install page shows. They are copied from
 `PluginCapability::consent_sentence` in HappyView's
 `src/plugin/capabilities.rs`, which is the only place they are defined; no
@@ -311,14 +311,16 @@ hand.
 | --- | --- |
 | `library:call` | Call other installed library plugins, which run with their own permissions (not this plugin's). |
 | `script:host` | Log, report progress, check for a stop request, wait, and load the project's own modules on behalf of the script run it is inside; the host supplies the run's identity, job and files. |
+| `script:test` | Fire this project's triggers, mock its libraries and record results, only while the test command runs one of its test files. |
 | `wasi:clock` | Read the wall clock. |
 | `wasi:random` | Read secure random numbers. |
 | `wasi:stdio` | Write to this instance's plugin log. |
 
 The clock is what `Date` and `internal.time` read; randomness is what a TID's
 clock id needs; and the log is where the engine's own diagnostics would go.
-The module's import section is checked against these five at load, so it can
-reach nothing else. Running calls at once needs no sixth: it reaches nothing a
+The module's import section is checked against these six at load, so it can
+reach nothing else, and `script:test`'s imports answer only inside a test
+file's run. Running calls at once needs no seventh: it reaches nothing a
 script could not reach one call at a time.
 
 ## Building
