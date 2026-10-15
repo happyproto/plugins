@@ -1,6 +1,6 @@
 {
   "extends": "../../../release/package-paths.mjs",
-  "packagePaths": ["plugins/happyview/javascript", "plugins/happyview/quickjs"],
+  "packagePaths": ["plugins/happyview/javascript", "plugins/happyview/quickjs", "Cargo.lock"],
   "branches": [
     "main",
     { "name": "beta", "prerelease": true },

@@ -7,9 +7,12 @@
 // directory and wrong for one built on a crate beside it: a fix in the
 // QuickJS engine touches neither `javascript/` nor `typescript/`, so it would
 // release neither interpreter, and the modules people install would never
-// carry it. This does what that plugin does — wraps each configured plugin's
-// `analyzeCommits`, `generateNotes`, `success` and `fail` and hands them only
-// the commits that count — with the paths listed in `.releaserc.json`:
+// carry it. The same holds for the root `Cargo.lock`, which pins the SDK every
+// plugin compiles against: a re-pin changes every module and touches no
+// plugin's directory, so each plugin lists it too. This does what that plugin
+// does — wraps each configured plugin's `analyzeCommits`, `generateNotes`,
+// `success` and `fail` and hands them only the commits that count — with the
+// paths listed in `.releaserc.json`:
 //
 //   "extends": "../../../release/package-paths.mjs",
 //   "packagePaths": ["plugins/happyview/javascript", "plugins/happyview/quickjs"]
