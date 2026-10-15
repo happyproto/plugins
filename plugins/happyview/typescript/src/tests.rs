@@ -531,3 +531,37 @@ fn a_typescript_module_runs_from_its_artifact_with_no_source_on_its_own_lines() 
         other => panic!("expected a failure, got {other:?}"),
     }
 }
+
+#[test]
+fn a_test_failure_is_placed_in_the_typescript_source() {
+    let fake = std::rc::Rc::new(Fake::new());
+    let input = input(
+        r#"interface Thing {
+  id: string;
+}
+
+import { describe, it, expect } from "internal.test";
+
+describe("ts", () => {
+  it("fails", () => {
+    const thing: Thing = { id: "a" };
+    expect(thing.id).toBe("b");
+  });
+});"#,
+        json!({
+            "kind": "test",
+            "input": null,
+            "context": { "trigger": "test:src/lib/a.test.ts" },
+            "limits": { "instructions": null, "memory_bytes": 67_108_864 },
+            "chunk_name": "src/lib/a.test.ts",
+        }),
+    );
+    happyview_quickjs::execute_with(&TypeScript, &input, fake.clone()).unwrap();
+    let reports = fake.reports.borrow();
+    assert_eq!(
+        reports[0].message.as_deref(),
+        Some(r#"expected "b", got "a""#)
+    );
+    assert_eq!(reports[0].line, Some(10));
+    assert_eq!(reports[0].file.as_deref(), Some("src/lib/a.test.ts"));
+}
