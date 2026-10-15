@@ -515,6 +515,7 @@ dependencies = [
  "getrandom",
  "happyview-plugin-sdk",
  "rquickjs",
+ "serde",
  "serde_json",
 ]
 

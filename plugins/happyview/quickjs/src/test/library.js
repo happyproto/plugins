@@ -267,4 +267,25 @@ export function expect(actual) {
   return now;
 }
 
+// Each trigger is called before its promise is returned, so a refusal is
+// raised while the test's frame is still on the stack and is placed there.
+export const test = {
+  query: async (nsid, params = {}, opts = {}) =>
+    host.trigger({ kind: "query", target: nsid, input: params, as: opts.as }),
+  procedure: async (nsid, input = {}, opts = {}) =>
+    host.trigger({ kind: "procedure", target: nsid, input, as: opts.as }),
+  recordCreate: async (collection, opts = {}) =>
+    host.trigger({ kind: "record_create", target: collection, input: opts.record ?? {}, did: opts.did, rkey: opts.rkey, as: opts.as }),
+  recordUpdate: async (collection, opts = {}) =>
+    host.trigger({ kind: "record_update", target: collection, input: opts.record ?? {}, did: opts.did, rkey: opts.rkey, as: opts.as }),
+  recordDelete: async (collection, opts = {}) =>
+    host.trigger({ kind: "record_delete", target: collection, did: opts.did, rkey: opts.rkey, as: opts.as }),
+  job: async (type, input = {}, opts = {}) =>
+    host.trigger({ kind: "job", target: type, input, as: opts.as }),
+  label: async (uri, label = {}) => host.trigger({ kind: "label", target: uri, input: label }),
+  mock: (namespace, responses) => host.mock({ namespace, responses }),
+  calls: (namespace) => host.calls({ namespace }),
+  pdsWrites: () => host.pdsWrites(),
+};
+
 host.register(run);
