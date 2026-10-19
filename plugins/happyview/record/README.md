@@ -25,10 +25,10 @@ local lexicon = record.lexicon("app.bsky.feed.post")   -- table or nil
 
 - `create(collection, tbl[, opts])` — `opts.rkey`, `opts.repo` (defaults to
   the caller's own, the only repo a caller-acting write can target),
-  `opts.validate` (default `true`). Returns `{uri, cid}`.
+  `opts.validate` (see [Validation](#validation)). Returns `{uri, cid}`.
 - `put(uri, tbl[, opts])` — `opts.swap_cid` (a no-create guarantee: refuses
-  unless it matches the record's current CID), `opts.validate` (default
-  `true`, as for `create`). Returns `{uri, cid}`.
+  unless it matches the record's current CID), `opts.validate` (as for
+  `create`). Returns `{uri, cid}`.
 - `delete(uri)` — deletes from the user's own repo.
 - `upload_blob(bytes, mime_type)` — `bytes` is a string or `{"$bytes": "<base64>"}`;
   returns the PDS's blob ref, as-is.
@@ -64,6 +64,19 @@ accepts them, so a script sees its own write on its next `load` (or any
 `cid`, and `delete` removes it. `indexed_at` stays nil until the network
 echoes the record. A `save_local` row has neither `cid` nor `indexed_at`
 until then. A mirror failure is logged and does not fail the write.
+
+## Validation
+
+`opts.validate` decides how `create` and `put` check a record against its
+lexicon:
+
+- **Left out:** checked here, and the PDS validates it when it knows or can
+  resolve the lexicon — `com.atproto.repo.createRecord`'s own default. A
+  record whose lexicon the PDS can't resolve is still written.
+- **`true`:** checked here and strictly by the PDS, which refuses a record
+  whose lexicon it can't resolve. Most PDSes resolve none on demand, so only
+  ask for this when the lexicon is one the user's PDS is sure to know.
+- **`false`:** not checked at all.
 
 ## `$type` and defaults
 
