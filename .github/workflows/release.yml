@@ -268,4 +268,4 @@ jobs:
           credential: ${{ secrets.HPY_CREDENTIAL }}
           working-directory: plugins/happyview/${{ matrix.plugin }}
           wasm: ${{ steps.version.outputs.wasm }}
-          hpy-channel: alpha
+          hpy-channel: beta
