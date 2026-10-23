@@ -248,7 +248,19 @@ jobs:
         env:
           DIR: plugins/happyview/${{ matrix.plugin }}
           TAG: ${{ steps.release.outputs.new-release-git-tag }}
+          BRANCH: ${{ github.ref_name }}
         run: |
+          # The registry track a branch publishes to. A branch with no track
+          # fails here rather than publishing somewhere unintended.
+          case "$BRANCH" in
+            main) track=latest ;;
+            beta) track=beta ;;
+            alpha) track=alpha ;;
+            *)
+              echo "::error::no registry track for branch $BRANCH (expected main, beta or alpha)"
+              exit 1
+              ;;
+          esac
           version=$(node release/release-config.mjs version "$DIR" "$TAG")
           manifest=$(jq -r .version "$DIR/manifest.json")
           if [ "$version" != "$manifest" ]; then
@@ -257,6 +269,7 @@ jobs:
           fi
           {
             echo "version=$version"
+            echo "track=$track"
             echo "wasm=$(node release/release-config.mjs wasm "$DIR")"
           } >> "$GITHUB_OUTPUT"
 
@@ -265,6 +278,7 @@ jobs:
         uses: happyproto/actions/plugin-publish@v1
         with:
           version: ${{ steps.version.outputs.version }}
+          track: ${{ steps.version.outputs.track }}
           credential: ${{ secrets.HPY_CREDENTIAL }}
           working-directory: plugins/happyview/${{ matrix.plugin }}
           wasm: ${{ steps.version.outputs.wasm }}

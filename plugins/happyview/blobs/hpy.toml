@@ -1,11 +1,13 @@
-[profile]
-license = "MIT"
+[project]
 keywords = ["happyview", "blobs", "cid", "storage", "library"]
 authors = [{ name = "Trezy", email = "tre@trezy.com" }]
 security = [{ url = "https://github.com/happyproto/plugins/security/advisories/new" }]
 
-[profile.sections]
+[release]
+license = "MIT"
+changelog = "CHANGELOG.md"
+
+[release.sections]
 description = "DESCRIPTION.md"
 installation = "INSTALLATION.md"
-changelog = "CHANGELOG.md"
 security = "SECURITY.md"
