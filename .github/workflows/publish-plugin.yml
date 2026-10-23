@@ -39,6 +39,14 @@ on:
         description: The version to publish, e.g. 1.2.0
         required: true
         type: string
+      track:
+        description: The registry track to publish to
+        required: true
+        type: choice
+        options:
+          - latest
+          - beta
+          - alpha
 
 permissions:
   contents: read
@@ -70,6 +78,7 @@ jobs:
       - uses: happyproto/actions/plugin-publish@v1
         with:
           version: ${{ inputs.version }}
+          track: ${{ inputs.track }}
           credential: ${{ secrets.HPY_CREDENTIAL }}
           working-directory: ${{ env.DIR }}
           wasm: ${{ steps.module.outputs.wasm }}
