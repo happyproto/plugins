@@ -56,7 +56,7 @@ fn list_opts_param() -> Value {
     json!({"name": "opts", "type": "object?", "description": "List filters", "properties": [
         {"name": "status", "type": "array?", "description": "Statuses to include; default every status"},
         {"name": "job_type", "type": "string?", "description": "Only jobs of this type"},
-        {"name": "limit", "type": "number?", "description": "Maximum jobs; the host defaults to 50 and caps at 200"}
+        {"name": "limit", "type": "integer?", "description": "Maximum jobs; the host defaults to 50 and caps at 200"}
     ]})
 }
 
@@ -227,5 +227,13 @@ mod tests {
     #[test]
     fn list_opts_rejects_a_non_table() {
         assert_eq!(list_opts(&[json!("x")]).unwrap_err().code, "BAD_INPUT");
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }
