@@ -56,6 +56,75 @@ jobs:
         run: cargo build --release --target wasm32-unknown-unknown
 
 
+  # The plugins that build for `wasm32-unknown-unknown` are tested natively,
+  # where their logic runs: each library's own tests, among them that its API
+  # surface parses, which HappyView refuses to install otherwise.
+  test:
+    runs-on: depot-ubuntu-24.04
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native
+
+      - name: Test
+        run: cargo test -j 2
+
+  # The declarations the interpreters render are handed to the language's own
+  # checker with a sample handler each, so a renderer that writes something
+  # tsc or lua-language-server rejects fails here rather than in an editor.
+  declarations:
+    runs-on: depot-ubuntu-24.04
+    needs: [fmt, clippy]
+    env:
+      LUA_LANGUAGE_SERVER_VERSION: "3.19.2"
+    steps:
+      - uses: actions/checkout@v7
+
+      # The renderers are native tests of the interpreter crates, which
+      # compile their vendored C engines with wasi-sdk's clang settings in
+      # `.cargo/config.toml`, so the toolchain is set up as for `interpreter`.
+      - name: Cache wasi-sdk
+        id: wasi-sdk
+        uses: actions/cache@v6
+        with:
+          path: /opt/wasi-sdk
+          key: wasi-sdk-${{ env.WASI_SDK_VERSION }}-x86_64-linux
+
+      - name: Install wasi-sdk
+        if: steps.wasi-sdk.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION%%.*}/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux.tar.gz"
+          mkdir -p /opt/wasi-sdk
+          tar -xzf /tmp/wasi-sdk.tar.gz --strip-components=1 -C /opt/wasi-sdk
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: declarations
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install TypeScript
+        run: npm ci
+
+      - name: Install lua-language-server
+        run: |
+          mkdir -p /opt/lua-language-server
+          curl -fsSL "https://github.com/LuaLS/lua-language-server/releases/download/${LUA_LANGUAGE_SERVER_VERSION}/lua-language-server-${LUA_LANGUAGE_SERVER_VERSION}-linux-x64.tar.gz" \
+            | tar -xz -C /opt/lua-language-server
+
+      - name: Check the rendered declarations
+        env:
+          LUA_LANGUAGE_SERVER: /opt/lua-language-server/bin/lua-language-server
+        run: bash tests/declarations/check.sh
+
   # The interpreters are the members that are not pure Rust on
   # `wasm32-unknown-unknown`: they vendor PUC Lua and QuickJS-ng, which
   # `lua-src` and `rquickjs-sys` compile with clang from wasi-sdk. They get a
@@ -155,7 +224,7 @@ jobs:
     # it does not know is a no-op there, so the guard only has to keep a
     # pull request from releasing.
     if: github.event_name == 'push' && contains(fromJSON('["refs/heads/main", "refs/heads/beta", "refs/heads/alpha"]'), github.ref)
-    needs: [build, interpreter, release-config]
+    needs: [build, interpreter, release-config, test, declarations]
     runs-on: depot-ubuntu-24.04
     permissions:
       contents: write
