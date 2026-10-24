@@ -29,10 +29,21 @@ fn surface() -> ApiSurface {
             "AT Protocol identity and service resolution, blob download, label lookup, and \
              attestation signing",
         )
+        .named_type(
+            "Label",
+            "A label a subscribed labeler applied",
+            json!({"type": "object", "properties": [
+                {"name": "src", "type": "string", "description": "The labeler's DID"},
+                {"name": "uri", "type": "string", "description": "What the label applies to"},
+                {"name": "val", "type": "string", "description": "The label's value"},
+                {"name": "cts", "type": "string", "description": "When it was created"}
+            ]}),
+        )
         .export(
             ApiExport::function("resolve_service_endpoint")
                 .describe("Resolve the AT Protocol service a DID's document advertises")
-                .param("did", "string", "Subject DID"),
+                .param("did", "string", "Subject DID")
+                .returns(json!({"type": "string?", "description": "The service's URL, or null when the document advertises none"})),
         )
         .export(
             ApiExport::function("resolve_identity")
@@ -53,17 +64,20 @@ fn surface() -> ApiSurface {
         .export(
             ApiExport::function("get_labels")
                 .describe("Labels applied to one URI")
-                .param("uri", "string", "AT URI"),
+                .param("uri", "string", "AT URI")
+                .returns(json!("Label[]")),
         )
         .export(
             ApiExport::function("get_labels_batch")
                 .describe("Labels applied to a set of URIs, keyed by URI")
-                .param("uris", "array", "AT URIs"),
+                .param("uris", "string[]", "AT URIs")
+                .returns(json!({"type": "object", "description": "Each URI's Label[], keyed by URI"})),
         )
         .export(
             ApiExport::function("sign")
                 .describe("Sign a record with this instance's attestation key")
-                .param("record", "object", "Record body"),
+                .param("record", "object", "Record body")
+                .returns(json!({"type": "object", "description": "The inline signature object, to add to the record's signatures"})),
         )
         .export(
             ApiExport::function("verify_signature")
@@ -74,7 +88,8 @@ fn surface() -> ApiSurface {
                     "repo_did",
                     "string",
                     "Repo DID the record claims to belong to",
-                ),
+                )
+                .returns(json!("boolean")),
         )
 }
 
@@ -263,5 +278,13 @@ mod tests {
         let args = [json!("not an object")];
         let err = object_arg(&args, 0, "signature").unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }
