@@ -1,0 +1,1848 @@
+{
+  "ctx": {
+    "job": {
+      "properties": [
+        {
+          "description": "The trigger that ran this script",
+          "name": "trigger",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether library calls can act as the caller on their PDS",
+          "name": "has_pds_auth",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "The script variables",
+          "name": "env",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "description": "Who created the job, when anyone did",
+          "name": "caller_did",
+          "required": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The job this run is",
+          "name": "job",
+          "required": true,
+          "type": {
+            "kind": "object",
+            "properties": [
+              {
+                "description": "The job's id",
+                "name": "id",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "label": {
+      "properties": [
+        {
+          "description": "The trigger that ran this script",
+          "name": "trigger",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether library calls can act as the caller on their PDS",
+          "name": "has_pds_auth",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "The script variables",
+          "name": "env",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "procedure": {
+      "properties": [
+        {
+          "description": "The trigger that ran this script",
+          "name": "trigger",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether library calls can act as the caller on their PDS",
+          "name": "has_pds_auth",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "The script variables",
+          "name": "env",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "description": "The caller's DID",
+          "name": "caller_did",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The XRPC method's NSID",
+          "name": "method",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The record collection this method operates on",
+          "name": "collection",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The query parameters the request carried",
+          "name": "params",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "unknown"
+            }
+          }
+        },
+        {
+          "description": "The account the caller is acting for, when it delegated",
+          "name": "delegate_did",
+          "required": false,
+          "type": {
+            "kind": "union",
+            "members": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "open": false
+          }
+        },
+        {
+          "description": "The space the request is scoped to",
+          "name": "space",
+          "required": false,
+          "type": {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "id",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "authority_did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "spaceType",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "skey",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "query": {
+      "properties": [
+        {
+          "description": "The trigger that ran this script",
+          "name": "trigger",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether library calls can act as the caller on their PDS",
+          "name": "has_pds_auth",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "The script variables",
+          "name": "env",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "description": "The caller's DID",
+          "name": "caller_did",
+          "required": false,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The XRPC method's NSID",
+          "name": "method",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The record collection this method operates on",
+          "name": "collection",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The space the request is scoped to",
+          "name": "space",
+          "required": false,
+          "type": {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "id",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "authority_did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "spaceType",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "skey",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "record": {
+      "properties": [
+        {
+          "description": "The trigger that ran this script",
+          "name": "trigger",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether library calls can act as the caller on their PDS",
+          "name": "has_pds_auth",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "The script variables",
+          "name": "env",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "description": "The record's author",
+          "name": "caller_did",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The record collection this method operates on",
+          "name": "collection",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "test": {
+      "properties": [
+        {
+          "description": "The trigger that ran this script",
+          "name": "trigger",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether library calls can act as the caller on their PDS",
+          "name": "has_pds_auth",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "The script variables",
+          "name": "env",
+          "required": true,
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "events": {
+    "label": {
+      "properties": [
+        {
+          "description": "The labeler's DID",
+          "name": "src",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "What the label applies to",
+          "name": "uri",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The label's value",
+          "name": "val",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "Whether this removes the label",
+          "name": "neg",
+          "required": true,
+          "type": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "description": "When the label was created",
+          "name": "cts",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "When the label expires",
+          "name": "exp",
+          "required": false,
+          "type": {
+            "kind": "union",
+            "members": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "open": false
+          }
+        }
+      ]
+    },
+    "record": {
+      "properties": [
+        {
+          "name": "action",
+          "required": true,
+          "type": {
+            "kind": "union",
+            "members": [
+              {
+                "kind": "literal",
+                "value": "create"
+              },
+              {
+                "kind": "literal",
+                "value": "update"
+              },
+              {
+                "kind": "literal",
+                "value": "delete"
+              }
+            ],
+            "open": false
+          }
+        },
+        {
+          "description": "The record's AT URI",
+          "name": "uri",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The repo the record is in",
+          "name": "did",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The record's collection NSID",
+          "name": "collection",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The record's key",
+          "name": "rkey",
+          "required": true,
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "description": "The record body; null for a delete",
+          "name": "record",
+          "required": true,
+          "type": {
+            "kind": "union",
+            "members": [
+              {
+                "kind": "var",
+                "name": "record"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "open": false
+          }
+        }
+      ]
+    }
+  },
+  "lexicons": [
+    {
+      "defs": {
+        "choice": {
+          "kind": "union",
+          "members": [
+            {
+              "kind": "ref",
+              "name": "com.example.actor.defs#profileView"
+            },
+            {
+              "kind": "ref",
+              "name": "com.example.actor.defs#strongRef"
+            }
+          ],
+          "open": false
+        },
+        "featured": {
+          "kind": "literal",
+          "value": "com.example.actor.defs#featured"
+        },
+        "profileView": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "did",
+              "required": true,
+              "type": {
+                "format": "did",
+                "kind": "string"
+              }
+            },
+            {
+              "name": "followers",
+              "required": false,
+              "type": {
+                "kind": "integer"
+              }
+            },
+            {
+              "name": "handle",
+              "required": false,
+              "type": {
+                "kind": "string"
+              }
+            }
+          ]
+        },
+        "strongRef": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "cid",
+              "required": true,
+              "type": {
+                "kind": "string"
+              }
+            },
+            {
+              "name": "uri",
+              "required": true,
+              "type": {
+                "kind": "string"
+              }
+            }
+          ]
+        }
+      },
+      "kind": "definitions",
+      "nsid": "com.example.actor.defs"
+    },
+    {
+      "defs": {},
+      "kind": "procedure",
+      "main": {
+        "input": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "text",
+              "required": true,
+              "type": {
+                "kind": "string"
+              }
+            }
+          ]
+        },
+        "output": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "uri",
+              "required": true,
+              "type": {
+                "kind": "string"
+              }
+            }
+          ]
+        }
+      },
+      "nsid": "com.example.feed.createPost"
+    },
+    {
+      "defs": {},
+      "description": "List posts",
+      "kind": "query",
+      "main": {
+        "output": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "cursor",
+              "required": false,
+              "type": {
+                "kind": "string"
+              }
+            },
+            {
+              "name": "posts",
+              "required": true,
+              "type": {
+                "items": {
+                  "kind": "ref",
+                  "name": "com.example.feed.post#main"
+                },
+                "kind": "array"
+              }
+            }
+          ]
+        },
+        "params": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "actor",
+              "required": true,
+              "type": {
+                "kind": "string"
+              }
+            },
+            {
+              "name": "cursor",
+              "required": false,
+              "type": {
+                "kind": "string"
+              }
+            },
+            {
+              "default": 50,
+              "name": "limit",
+              "required": false,
+              "type": {
+                "kind": "integer"
+              }
+            }
+          ]
+        }
+      },
+      "nsid": "com.example.feed.getPosts"
+    },
+    {
+      "defs": {
+        "image": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "alt",
+              "required": false,
+              "type": {
+                "kind": "string"
+              }
+            },
+            {
+              "name": "image",
+              "required": true,
+              "type": {
+                "kind": "blob"
+              }
+            }
+          ]
+        },
+        "replyRef": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "parent",
+              "required": false,
+              "type": {
+                "kind": "ref",
+                "name": "com.example.missing#thing"
+              }
+            },
+            {
+              "name": "root",
+              "required": true,
+              "type": {
+                "kind": "ref",
+                "name": "com.example.actor.defs#strongRef"
+              }
+            }
+          ]
+        }
+      },
+      "description": "A post",
+      "kind": "record",
+      "main": {
+        "record": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "createdAt",
+              "required": true,
+              "type": {
+                "format": "datetime",
+                "kind": "string"
+              }
+            },
+            {
+              "name": "embed",
+              "required": false,
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "ref",
+                    "name": "com.example.feed.post#image"
+                  },
+                  {
+                    "kind": "ref",
+                    "name": "com.example.actor.defs#profileView"
+                  }
+                ],
+                "open": true
+              }
+            },
+            {
+              "name": "extra",
+              "required": false,
+              "type": {
+                "kind": "map",
+                "values": {
+                  "kind": "unknown"
+                }
+              }
+            },
+            {
+              "name": "kind",
+              "required": false,
+              "type": {
+                "kind": "string",
+                "known_values": [
+                  "text",
+                  "link"
+                ]
+              }
+            },
+            {
+              "name": "langs",
+              "required": false,
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "items": {
+                      "format": "language",
+                      "kind": "string"
+                    },
+                    "kind": "array"
+                  },
+                  {
+                    "kind": "null"
+                  }
+                ],
+                "open": false
+              }
+            },
+            {
+              "name": "pinned",
+              "required": false,
+              "type": {
+                "kind": "cid-link"
+              }
+            },
+            {
+              "name": "raw",
+              "required": false,
+              "type": {
+                "kind": "bytes"
+              }
+            },
+            {
+              "name": "reply",
+              "required": false,
+              "type": {
+                "kind": "ref",
+                "name": "com.example.feed.post#replyRef"
+              }
+            },
+            {
+              "description": "The post's text",
+              "name": "text",
+              "required": true,
+              "type": {
+                "kind": "string"
+              }
+            },
+            {
+              "name": "visibility",
+              "required": false,
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "literal",
+                    "value": "public"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "private"
+                  }
+                ],
+                "open": false
+              }
+            }
+          ]
+        }
+      },
+      "nsid": "com.example.feed.post"
+    },
+    {
+      "defs": {},
+      "kind": "procedure",
+      "main": {
+        "input": {
+          "kind": "bytes"
+        },
+        "output": {
+          "kind": "map",
+          "values": {
+            "kind": "unknown"
+          }
+        }
+      },
+      "nsid": "com.example.feed.upload"
+    }
+  ],
+  "libraries": [
+    {
+      "namespace": "happyview.atproto",
+      "surface": {
+        "exports": [
+          {
+            "kind": "function",
+            "name": "resolve_service",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "blob_download",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "labels_get",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "attest_sign",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "attest_verify",
+            "params": []
+          }
+        ],
+        "namespace": "happyview.atproto",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.blobs",
+      "surface": {
+        "exports": [
+          {
+            "kind": "function",
+            "name": "put",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "get",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "stat",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "exists",
+            "params": []
+          }
+        ],
+        "namespace": "happyview.blobs",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.caller",
+      "surface": {
+        "exports": [
+          {
+            "kind": "function",
+            "name": "create_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "put_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "delete_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "upload_blob",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "xrpc_query",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "xrpc_procedure",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "index_put",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "index_delete",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "lexicon_get",
+            "params": []
+          }
+        ],
+        "namespace": "happyview.caller",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.http",
+      "surface": {
+        "description": "Outbound HTTP requests",
+        "exports": [
+          {
+            "description": "Send a GET request",
+            "kind": "function",
+            "name": "get",
+            "params": [
+              {
+                "description": "Target URL",
+                "name": "url",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Request options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Header name to value",
+                          "name": "headers",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "map",
+                                "values": {
+                                  "kind": "unknown"
+                                }
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Request body (ignored for get/head)",
+                          "name": "body",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                {
+                  "name": "body",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Lower-cased header name to value",
+                  "name": "headers",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Send a POST request",
+            "kind": "function",
+            "name": "post",
+            "params": [
+              {
+                "description": "Target URL",
+                "name": "url",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Request options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Header name to value",
+                          "name": "headers",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "map",
+                                "values": {
+                                  "kind": "unknown"
+                                }
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Request body (ignored for get/head)",
+                          "name": "body",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                {
+                  "name": "body",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Lower-cased header name to value",
+                  "name": "headers",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Send a PUT request",
+            "kind": "function",
+            "name": "put",
+            "params": [
+              {
+                "description": "Target URL",
+                "name": "url",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Request options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Header name to value",
+                          "name": "headers",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "map",
+                                "values": {
+                                  "kind": "unknown"
+                                }
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Request body (ignored for get/head)",
+                          "name": "body",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                {
+                  "name": "body",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Lower-cased header name to value",
+                  "name": "headers",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Send a PATCH request",
+            "kind": "function",
+            "name": "patch",
+            "params": [
+              {
+                "description": "Target URL",
+                "name": "url",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Request options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Header name to value",
+                          "name": "headers",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "map",
+                                "values": {
+                                  "kind": "unknown"
+                                }
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Request body (ignored for get/head)",
+                          "name": "body",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                {
+                  "name": "body",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Lower-cased header name to value",
+                  "name": "headers",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Send a DELETE request",
+            "kind": "function",
+            "name": "delete",
+            "params": [
+              {
+                "description": "Target URL",
+                "name": "url",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Request options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Header name to value",
+                          "name": "headers",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "map",
+                                "values": {
+                                  "kind": "unknown"
+                                }
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Request body (ignored for get/head)",
+                          "name": "body",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                {
+                  "name": "body",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Lower-cased header name to value",
+                  "name": "headers",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Send a HEAD request",
+            "kind": "function",
+            "name": "head",
+            "params": [
+              {
+                "description": "Target URL",
+                "name": "url",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Request options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Header name to value",
+                          "name": "headers",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "map",
+                                "values": {
+                                  "kind": "unknown"
+                                }
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Request body (ignored for get/head)",
+                          "name": "body",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                },
+                {
+                  "name": "body",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Lower-cased header name to value",
+                  "name": "headers",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "The plugin's effective allowed-hosts list",
+            "kind": "function",
+            "name": "allowed_hosts",
+            "params": [],
+            "returns": {
+              "items": {
+                "kind": "string"
+              },
+              "kind": "array"
+            }
+          }
+        ],
+        "namespace": "happyview.http",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.linked",
+      "surface": {
+        "exports": [
+          {
+            "kind": "function",
+            "name": "list",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "create_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "put_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "delete_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "upload_blob",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "call",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "jobs_create",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "jobs_get",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "jobs_get_any",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "jobs_list_any",
+            "params": []
+          }
+        ],
+        "namespace": "happyview.linked",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.objects",
+      "surface": {
+        "exports": [
+          {
+            "kind": "constructor",
+            "methods": [
+              {
+                "mode": "lazy",
+                "name": "add",
+                "params": []
+              },
+              {
+                "mode": "immediate",
+                "name": "doc",
+                "params": []
+              }
+            ],
+            "name": "chain",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "records_query",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "records_count",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "records_get",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "records_search",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "table_query",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "backlinks_query",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "backend",
+            "params": []
+          }
+        ],
+        "namespace": "happyview.objects",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.spaces",
+      "surface": {
+        "exports": [
+          {
+            "kind": "function",
+            "name": "info",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "query",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "members",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "access",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "create",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "accept_invite",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "write_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "put_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "delete_record",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "add_member",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "set_member",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "remove_member",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "update",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "delete",
+            "params": []
+          },
+          {
+            "kind": "function",
+            "name": "create_invite",
+            "params": []
+          }
+        ],
+        "namespace": "happyview.spaces",
+        "types": []
+      }
+    }
+  ]
+}
