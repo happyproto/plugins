@@ -29,6 +29,27 @@ library_plugin! {
 fn surface() -> ApiSurface {
     ApiSurface::new("happyview.record")
         .describe("Record writes as the calling user, local index writes, and validation")
+        .named_type(
+            "RecordRef",
+            "Where a written record is",
+            json!({"type": "object", "properties": [
+                {"name": "uri", "type": "string", "description": "The record's AT URI"},
+                {"name": "cid", "type": "string", "description": "The record's CID"}
+            ]}),
+        )
+        .named_type(
+            "RecordEnvelope",
+            "An indexed record beside where it came from",
+            json!({"type": "object", "properties": [
+                {"name": "uri", "type": "string", "description": "The record's AT URI"},
+                {"name": "did", "type": "string", "description": "The repo it is in"},
+                {"name": "collection", "type": "string", "description": "Its collection NSID"},
+                {"name": "rkey", "type": "string", "description": "Its record key"},
+                {"name": "cid", "type": "string?", "description": "Its CID; a PDS write carries it at once, a save_local row has none"},
+                {"name": "indexed_at", "type": "string?", "description": "When the network's copy was indexed; null until the network echoes the record"},
+                {"name": "record", "type": "object", "description": "The stored body"}
+            ]}),
+        )
         .export(
             ApiExport::function("create")
                 .describe("Create a record in the user's own repo")
@@ -48,7 +69,8 @@ fn surface() -> ApiSurface {
         .export(
             ApiExport::function("delete")
                 .describe("Delete a record from the user's own repo")
-                .param("uri", "string", "AT URI"),
+                .param("uri", "string", "AT URI")
+                .returns(json!("null")),
         )
         .export(
             ApiExport::function("upload_blob")
@@ -65,10 +87,7 @@ fn surface() -> ApiSurface {
             ApiExport::function("load")
                 .describe("One indexed record by AT URI, or null")
                 .param("uri", "string", "AT URI")
-                .returns(json!({
-                    "type": "object?",
-                    "description": "The record envelope: uri, did, collection, rkey, cid, indexed_at and the stored body under record; a PDS write carries its cid at once, indexed_at stays null until the network echoes the record, and a save_local row has neither"
-                })),
+                .returns(json!("RecordEnvelope?")),
         )
         .export(
             ApiExport::function("save_local")
@@ -82,13 +101,15 @@ fn surface() -> ApiSurface {
         .export(
             ApiExport::function("delete_local")
                 .describe("Remove a record from the local index, bypassing the PDS")
-                .param("uri", "string", "AT URI"),
+                .param("uri", "string", "AT URI")
+                .returns(json!({"type": "boolean", "description": "Whether a record was there to remove"})),
         )
         .export(
             ApiExport::function("validate")
                 .describe("Normalize a record against its lexicon and check required fields")
                 .param("collection", "string", "Lexicon collection NSID")
-                .param("record", "object", "Record body"),
+                .param("record", "object", "Record body")
+                .returns(json!({"type": "object", "description": "The record with its $type set and defaults filled in; raises when a required field is missing"})),
         )
         .export(
             ApiExport::function("lexicon")
@@ -117,10 +138,7 @@ fn put_opts() -> Value {
 }
 
 fn record_ref_shape() -> Value {
-    json!({"type": "object", "properties": [
-        {"name": "uri", "type": "string"},
-        {"name": "cid", "type": "string"}
-    ]})
+    json!("RecordRef")
 }
 
 fn dispatch(function: &str, args: &[Value], ctx: &CallContext) -> Result<Value, PluginError> {
@@ -450,5 +468,13 @@ mod tests {
     fn collection_from_uri_rejects_a_uri_missing_a_collection() {
         let err = collection_from_uri("at://did:plc:abc").unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }
