@@ -11,8 +11,8 @@ use alloc::string::{String, ToString};
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    library_plugin, ApiExport, ApiSurface, CallContext, CallerXrpcProcedure, CallerXrpcQuery, Map,
-    PluginError, PluginInfo, Value,
+    json, library_plugin, ApiExport, ApiSurface, CallContext, CallerXrpcProcedure, CallerXrpcQuery,
+    Map, PluginError, PluginInfo, Value,
 };
 
 library_plugin! {
@@ -28,14 +28,16 @@ fn surface() -> ApiSurface {
             ApiExport::function("query")
                 .describe("Send an XRPC query as the calling user")
                 .param("method", "string", "XRPC method NSID")
-                .param("params", "object?", "Query parameters"),
+                .param("params", "object?", "Query parameters")
+                .returns(json!({"type": "unknown", "description": "The method's output, as the PDS answered"})),
         )
         .export(
             ApiExport::function("procedure")
                 .describe("Send an XRPC procedure as the calling user")
                 .param("method", "string", "XRPC method NSID")
                 .param("input", "object?", "Procedure input body")
-                .param("params", "object?", "Query parameters"),
+                .param("params", "object?", "Query parameters")
+                .returns(json!({"type": "unknown", "description": "The method's output, as the PDS answered"})),
         )
 }
 
@@ -157,5 +159,13 @@ mod tests {
         let args = [json!("not an object")];
         let err = input_arg(&args, 0).unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }

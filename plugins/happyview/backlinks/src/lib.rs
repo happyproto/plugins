@@ -10,8 +10,8 @@ use alloc::string::{String, ToString};
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    library_plugin, ApiExport, ApiSurface, BacklinksQuery, CallContext, ObjectCall, PluginError,
-    PluginInfo, Value,
+    json, library_plugin, ApiExport, ApiMethod, ApiSurface, BacklinksQuery, CallContext,
+    ObjectCall, PluginError, PluginInfo, Value,
 };
 
 library_plugin! {
@@ -23,15 +23,56 @@ library_plugin! {
 fn surface() -> ApiSurface {
     ApiSurface::new("happyview.backlinks")
         .describe("Query records that reference a given AT URI")
+        .named_type(
+            "RecordEnvelope",
+            "An indexed record beside where it came from",
+            json!({"type": "object", "properties": [
+                {"name": "uri", "type": "string", "description": "The record's AT URI"},
+                {"name": "did", "type": "string", "description": "The repo it is in"},
+                {"name": "collection", "type": "string", "description": "Its collection NSID"},
+                {"name": "rkey", "type": "string", "description": "Its record key"},
+                {"name": "cid", "type": "string?", "description": "Its CID; null for a record written locally and not yet seen on the network"},
+                {"name": "indexed_at", "type": "string?", "description": "When the network's copy was indexed; null until it has been"},
+                {"name": "record", "type": "object", "description": "The record body"}
+            ]}),
+        )
+        .named_type(
+            "RecordsPage",
+            "One page of referencing records",
+            json!({"type": "object", "properties": [
+                {"name": "records", "type": "RecordEnvelope[]"},
+                {"name": "cursor", "type": "string?", "description": "Pass to cursor() for the next page; absent on the last"}
+            ]}),
+        )
         .export(
             ApiExport::constructor("to")
                 .describe("Start a query for records referencing one AT URI")
                 .param("uri", "string", "AT URI")
-                .lazy("collection")
-                .lazy("did")
-                .lazy("limit")
-                .lazy("cursor")
-                .immediate("run"),
+                .method(
+                    ApiMethod::lazy("collection")
+                        .describe("Only referencing records in this collection; required before run()")
+                        .param("collection", "string?", "Collection NSID; nil skips the step"),
+                )
+                .method(
+                    ApiMethod::lazy("did")
+                        .describe("Only referencing records in one repo")
+                        .param("did", "string?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::lazy("limit")
+                        .describe("At most this many records")
+                        .param("n", "integer?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::lazy("cursor")
+                        .describe("Continue from a page's cursor")
+                        .param("cursor", "string?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::immediate("run")
+                        .describe("Run the query")
+                        .returns(json!("RecordsPage")),
+                ),
         )
 }
 
@@ -239,5 +280,13 @@ mod tests {
         let err = fold(&call).unwrap_err();
         assert_eq!(err.code, "BAD_CHAIN");
         assert!(err.message.contains("collection"));
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }

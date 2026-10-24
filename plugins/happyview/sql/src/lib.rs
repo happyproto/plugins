@@ -10,7 +10,8 @@ mod chain;
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    library_plugin, ApiExport, ApiSurface, CallContext, ObjectCall, PluginError, PluginInfo, Value,
+    json, library_plugin, ApiExport, ApiMethod, ApiSurface, CallContext, ObjectCall, PluginError,
+    PluginInfo, Value,
 };
 
 library_plugin! {
@@ -26,11 +27,34 @@ fn surface() -> ApiSurface {
             ApiExport::constructor("from")
                 .describe("Start a query over one table")
                 .param("table", "string", "Table name")
-                .lazy("where")
-                .lazy("sort")
-                .lazy("limit")
-                .immediate("run")
-                .immediate("count"),
+                .method(
+                    ApiMethod::lazy("where")
+                        .describe("Keep rows whose column compares true; every where() must hold")
+                        .param("column", "string?", "Column name; nil skips the step")
+                        .param("op", "'=' | '!=' | '<' | '>' | '<=' | '>=' | 'like' | 'not like' | 'ilike'", "How to compare")
+                        .param("value", "string | number | boolean", "What to compare with"),
+                )
+                .method(
+                    ApiMethod::lazy("sort")
+                        .describe("Order by a column")
+                        .param("column", "string?", "Column name; nil skips the step")
+                        .param("direction", "('asc' | 'desc')?", "Default desc"),
+                )
+                .method(
+                    ApiMethod::lazy("limit")
+                        .describe("At most this many rows")
+                        .param("n", "integer?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::immediate("run")
+                        .describe("Run the query")
+                        .returns(json!({"type": "object[]", "description": "One object per row, by column name"})),
+                )
+                .method(
+                    ApiMethod::immediate("count")
+                        .describe("Count the rows the query matches")
+                        .returns(json!("integer")),
+                ),
         )
         .export(
             ApiExport::function("raw")
@@ -40,7 +64,8 @@ fn surface() -> ApiSurface {
                     "string",
                     "Statement with backend-native placeholders",
                 )
-                .param("params", "array?", "Bind values"),
+                .param("params", "array?", "Bind values")
+                .returns(json!({"type": "object[]", "description": "One object per row a query returns, by column name; empty for a statement that returns none"})),
         )
 }
 
@@ -76,4 +101,12 @@ fn raw(args: &[Value]) -> Result<Value, PluginError> {
     };
     let rows = host::db_query(sql, &params)?;
     Ok(Value::Array(rows.into_iter().map(Value::Object).collect()))
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
+    }
 }
