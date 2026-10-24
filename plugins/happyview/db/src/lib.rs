@@ -9,8 +9,8 @@ mod chain;
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    library_plugin, ApiExport, ApiSurface, CallContext, ObjectCall, PluginError, PluginInfo,
-    RecordsSearch, Value,
+    json, library_plugin, ApiExport, ApiMethod, ApiSurface, CallContext, ObjectCall, PluginError,
+    PluginInfo, RecordsSearch, Value,
 };
 
 library_plugin! {
@@ -22,23 +22,85 @@ library_plugin! {
 fn surface() -> ApiSurface {
     ApiSurface::new("happyview.db")
         .describe("Query indexed records")
+        .named_type(
+            "RecordEnvelope",
+            "An indexed record beside where it came from",
+            json!({"type": "object", "properties": [
+                {"name": "uri", "type": "string", "description": "The record's AT URI"},
+                {"name": "did", "type": "string", "description": "The repo it is in"},
+                {"name": "collection", "type": "string", "description": "Its collection NSID"},
+                {"name": "rkey", "type": "string", "description": "Its record key"},
+                {"name": "cid", "type": "string?", "description": "Its CID; null for a record written locally and not yet seen on the network"},
+                {"name": "indexed_at", "type": "string?", "description": "When the network's copy was indexed; null until it has been"},
+                {"name": "record", "type": "object", "description": "The record body"}
+            ]}),
+        )
+        .named_type(
+            "RecordsPage",
+            "One page of a query",
+            json!({"type": "object", "properties": [
+                {"name": "records", "type": "RecordEnvelope[]"},
+                {"name": "cursor", "type": "string?", "description": "Pass to cursor() for the next page; absent on the last"}
+            ]}),
+        )
+        .named_type(
+            "Operator",
+            "A comparison where() accepts",
+            json!("'=' | '!=' | '<' | '>' | '<=' | '>=' | 'like' | 'not like' | 'ilike'"),
+        )
         .export(
             ApiExport::constructor("records")
                 .describe("Start a query over one collection")
                 .param("collection", "string", "Lexicon collection NSID")
-                .lazy("where")
-                .lazy("sort")
-                .lazy("limit")
-                .lazy("cursor")
-                .lazy("did")
-                .immediate("run")
-                .immediate("count")
-                .immediate("first"),
+                .method(
+                    ApiMethod::lazy("where")
+                        .describe("Keep records whose field compares true; every where() must hold")
+                        .param("field", "string?", "Record field path; nil skips the step")
+                        .param("op", "Operator", "How to compare")
+                        .param("value", "string | number | boolean", "What to compare with"),
+                )
+                .method(
+                    ApiMethod::lazy("sort")
+                        .describe("Order by a field")
+                        .param("field", "string?", "Record field path; nil skips the step")
+                        .param("direction", "('asc' | 'desc')?", "Default desc"),
+                )
+                .method(
+                    ApiMethod::lazy("limit")
+                        .describe("At most this many records")
+                        .param("n", "integer?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::lazy("cursor")
+                        .describe("Continue from a page's cursor")
+                        .param("cursor", "string?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::lazy("did")
+                        .describe("Only records in one repo")
+                        .param("did", "string?", "nil skips the step"),
+                )
+                .method(
+                    ApiMethod::immediate("run")
+                        .describe("Run the query")
+                        .returns(json!("RecordsPage")),
+                )
+                .method(
+                    ApiMethod::immediate("count")
+                        .describe("Count what the query matches")
+                        .returns(json!("integer")),
+                )
+                .method(
+                    ApiMethod::immediate("first")
+                        .describe("The first record the query matches, or null")
+                        .returns(json!("RecordEnvelope?")),
+                ),
         )
         .export(
             ApiExport::function("get")
                 .describe("One record by AT URI, or null")
-                .param("uri", "string", "AT URI"),
+                .param("uri", "string", "AT URI")
+                .returns(json!("RecordEnvelope?")),
         )
         .export(
             ApiExport::function("search")
@@ -46,9 +108,14 @@ fn surface() -> ApiSurface {
                 .param("collection", "string", "Lexicon collection NSID")
                 .param("field", "string", "Record field path")
                 .param("query", "string", "Text to find")
-                .param("limit", "integer?", "Max results, default 10, max 100"),
+                .param("limit", "integer?", "Max results, default 10, max 100")
+                .returns(json!("RecordEnvelope[]")),
         )
-        .export(ApiExport::function("backend").describe("\"sqlite\" or \"postgres\""))
+        .export(
+            ApiExport::function("backend")
+                .describe("Which database the instance runs on")
+                .returns(json!("('sqlite' | 'postgres')?")),
+        )
 }
 
 fn dispatch(function: &str, args: &[Value], ctx: &CallContext) -> Result<Value, PluginError> {
@@ -102,5 +169,13 @@ fn records(call: &ObjectCall) -> Result<Value, PluginError> {
             "BAD_CHAIN",
             alloc::format!("{other}: unknown method"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }
