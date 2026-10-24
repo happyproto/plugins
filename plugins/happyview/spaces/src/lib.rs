@@ -12,8 +12,8 @@ use alloc::vec::Vec;
 
 use happyview_plugin_sdk::host;
 use happyview_plugin_sdk::{
-    json, library_plugin, ApiExport, ApiSurface, CallContext, Map, ObjectCall, PluginError,
-    PluginInfo, RecordRef, SpaceDelete, SpaceInfo, SpaceInviteCreate, SpaceInviteInfo,
+    json, library_plugin, ApiExport, ApiMethod, ApiSurface, CallContext, Map, ObjectCall,
+    PluginError, PluginInfo, RecordRef, SpaceDelete, SpaceInfo, SpaceInviteCreate, SpaceInviteInfo,
     SpaceMemberAdd, SpaceMemberInfo, SpaceMemberRemove, SpaceRecordDelete, SpaceRecordInfo,
     SpaceRecordPut, SpaceRecordWrite, SpaceRecordsPage, SpaceUpdate, SpacesAcceptInvite,
     SpacesAccess, SpacesCreate, SpacesInfo, SpacesMembers, SpacesQuery, Value,
@@ -28,6 +28,40 @@ library_plugin! {
 fn surface() -> ApiSurface {
     ApiSurface::new("happyview.spaces")
         .describe("Read and write permissioned spaces: records, membership and invites")
+        .named_type("Space", "A space's fields", space_shape())
+        .named_type("SpaceRecord", "A record in a space", record_shape())
+        .named_type("RecordsPage", "One page of a space's records", records_page_shape())
+        .named_type(
+            "Member",
+            "A member and what they may do; access is the nearest word for the read/write pair",
+            json!({"type": "object", "properties": [
+                {"name": "did", "type": "string"},
+                {"name": "access", "type": "string"},
+                {"name": "read", "type": "boolean"},
+                {"name": "write", "type": "boolean"}
+            ]}),
+        )
+        .named_type(
+            "Invite",
+            "An invite; token is returned only here, when it is created",
+            json!({"type": "object", "properties": [
+                {"name": "invite_id", "type": "string"},
+                {"name": "token", "type": "string"},
+                {"name": "access", "type": "string"},
+                {"name": "read", "type": "boolean"},
+                {"name": "write", "type": "boolean"},
+                {"name": "max_uses", "type": "integer?"},
+                {"name": "expires_at", "type": "string?"}
+            ]}),
+        )
+        .named_type(
+            "RecordRef",
+            "Where a written record is",
+            json!({"type": "object", "properties": [
+                {"name": "uri", "type": "string"},
+                {"name": "cid", "type": "string"}
+            ]}),
+        )
         .export(
             ApiExport::function("create")
                 .describe("Create a space")
@@ -41,7 +75,7 @@ fn surface() -> ApiSurface {
                     {"name": "app_access", "type": "object?"},
                     {"name": "config", "type": "object?"}
                 ]}))
-                .returns(space_shape()),
+                .returns(json!("Space")),
         )
         .export(
             ApiExport::function("accept_invite")
@@ -49,13 +83,13 @@ fn surface() -> ApiSurface {
                 .param_json(json!({"name": "opts", "type": "object", "properties": [
                     {"name": "token", "type": "string"}
                 ]}))
-                .returns(space_shape()),
+                .returns(json!("Space")),
         )
         .export(
             ApiExport::function("info")
                 .describe("A space's fields by URI, or nil")
                 .param("uri", "string", "Space AT URI")
-                .returns(json!({"anyOf": [space_shape(), {"type": "null"}]})),
+                .returns(json!("Space?")),
         )
         .export(
             ApiExport::function("query")
@@ -63,30 +97,128 @@ fn surface() -> ApiSurface {
                 .param_json(json!({"name": "opts", "type": "object", "properties": [
                     {"name": "uri", "type": "string"},
                     {"name": "collection", "type": "string?"},
-                    {"name": "limit", "type": "number?"},
+                    {"name": "limit", "type": "integer?"},
                     {"name": "cursor", "type": "string?"}
                 ]}))
-                .returns(records_page_shape()),
+                .returns(json!("RecordsPage")),
         )
         .export(
             ApiExport::constructor("get")
                 .describe("Act on one space, by URI")
                 .param("uri", "string", "Space AT URI")
-                .immediate("write_record")
-                .immediate("put_record")
-                .immediate("delete_record")
-                .immediate("add_member")
-                .immediate("set_member")
-                .immediate("put_member")
-                .immediate("remove_member")
-                .immediate("update")
-                .immediate("delete")
-                .immediate("create_invite")
-                .immediate("members")
-                .immediate("is_member")
-                .immediate("access")
-                .immediate("records"),
+                .method(
+                    ApiMethod::immediate("write_record")
+                        .describe("Write a new record into the space as the caller")
+                        .param_json(json!({"name": "opts", "type": "object", "properties": [
+                            {"name": "collection", "type": "string"},
+                            {"name": "record", "type": "object"}
+                        ]}))
+                        .returns(json!("RecordRef")),
+                )
+                .method(
+                    ApiMethod::immediate("put_record")
+                        .describe("Create or replace a record at a key")
+                        .param_json(json!({"name": "opts", "type": "object", "properties": [
+                            {"name": "collection", "type": "string"},
+                            {"name": "rkey", "type": "string"},
+                            {"name": "record", "type": "object"},
+                            {"name": "swap_cid", "type": "string?", "description": "Refuse unless this is the record's current CID"}
+                        ]}))
+                        .returns(json!("RecordRef")),
+                )
+                .method(
+                    ApiMethod::immediate("delete_record")
+                        .describe("Delete a record")
+                        .param_json(json!({"name": "opts", "type": "object", "properties": [
+                            {"name": "collection", "type": "string"},
+                            {"name": "rkey", "type": "string"},
+                            {"name": "swap_cid", "type": "string?", "description": "Refuse unless this is the record's current CID"}
+                        ]}))
+                        .returns(json!("true")),
+                )
+                .method(member_method("add_member", "Add a member"))
+                .method(member_method("set_member", "Add a member or change what they may do"))
+                .method(member_method("put_member", "Another name for set_member"))
+                .method(
+                    ApiMethod::immediate("remove_member")
+                        .describe("Remove a member")
+                        .param_json(json!({"name": "opts", "type": "object", "properties": [
+                            {"name": "did", "type": "string"}
+                        ]}))
+                        .returns(json!("true")),
+                )
+                .method(
+                    ApiMethod::immediate("update")
+                        .describe("Change the space's fields; display_name and description are cleared by false or null")
+                        .param_json(json!({"name": "opts", "type": "object?", "properties": [
+                            {"name": "display_name", "type": "string | false | null"},
+                            {"name": "description", "type": "string | false | null"},
+                            {"name": "read_policy", "type": "object?"},
+                            {"name": "write_policy", "type": "object?"},
+                            {"name": "app_access", "type": "object?"},
+                            {"name": "config", "type": "object?"}
+                        ]}))
+                        .returns(json!("Space")),
+                )
+                .method(
+                    ApiMethod::immediate("delete")
+                        .describe("Delete the space")
+                        .returns(json!("true")),
+                )
+                .method(
+                    ApiMethod::immediate("create_invite")
+                        .describe("Mint an invite; access is given as the access word or as read and write")
+                        .param_json(json!({"name": "opts", "type": "object?", "properties": [
+                            {"name": "access", "type": "string?"},
+                            {"name": "read", "type": "boolean?"},
+                            {"name": "write", "type": "boolean?"},
+                            {"name": "max_uses", "type": "integer?"},
+                            {"name": "expires_at", "type": "string?", "description": "RFC 3339"}
+                        ]}))
+                        .returns(json!("Invite")),
+                )
+                .method(
+                    ApiMethod::immediate("members")
+                        .describe("Every member")
+                        .returns(json!("Member[]")),
+                )
+                .method(
+                    ApiMethod::immediate("is_member")
+                        .describe("Whether a DID is a member")
+                        .param("did", "string", "")
+                        .returns(json!("boolean")),
+                )
+                .method(
+                    ApiMethod::immediate("access")
+                        .describe("A DID's access word, or null when they are not a member")
+                        .param("did", "string", "")
+                        .returns(json!("string?")),
+                )
+                .method(
+                    ApiMethod::immediate("records")
+                        .describe("Page through the space's records")
+                        .param_json(json!({"name": "opts", "type": "object?", "properties": [
+                            {"name": "collection", "type": "string?"},
+                            {"name": "limit", "type": "integer?"},
+                            {"name": "cursor", "type": "string?"}
+                        ]}))
+                        .returns(json!("RecordsPage")),
+                ),
         )
+}
+
+/// add_member, set_member and put_member take the same table.
+fn member_method(name: &str, description: &str) -> ApiMethod {
+    ApiMethod::immediate(name)
+        .describe(description)
+        .param_json(json!({"name": "opts", "type": "object", "description": "access is given as the access word or as read and write", "properties": [
+            {"name": "did", "type": "string"},
+            {"name": "access", "type": "string?"},
+            {"name": "read", "type": "boolean?"},
+            {"name": "write", "type": "boolean?"},
+            {"name": "is_delegation", "type": "boolean?"}
+        ]}))
+        .returns(json!("Member"))
 }
 
 fn space_shape() -> Value {
@@ -123,7 +255,7 @@ fn record_shape() -> Value {
 
 fn records_page_shape() -> Value {
     json!({"type": "object", "properties": [
-        {"name": "records", "type": "array", "items": record_shape()},
+        {"name": "records", "type": "SpaceRecord[]"},
         {"name": "cursor", "type": "string?"}
     ]})
 }
@@ -922,5 +1054,13 @@ mod tests {
         let err = member_add_spec("at://did:plc:xyz/space/t/s", &args).unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
         assert!(err.message.contains("did"));
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
     }
 }
