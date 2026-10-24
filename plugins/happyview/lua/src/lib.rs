@@ -1,6 +1,6 @@
 //! `happyview-lua`: Lua 5.4 as a HappyView interpreter plugin. PUC Lua 5.4.8
-//! through `mlua`, compiled to `wasm32-wasip1`, behind the SDK's `execute`
-//! and `validate` exports.
+//! through `mlua`, compiled to `wasm32-wasip1`, behind the SDK's `execute`,
+//! `validate` and `get_declarations` exports.
 
 mod artifact;
 mod budget;
@@ -10,6 +10,7 @@ mod concurrent;
 mod conformance;
 mod convert;
 mod ctx;
+mod declarations;
 mod imports;
 mod modules;
 mod require;
@@ -36,6 +37,7 @@ interpreter_plugin! {
     info: PluginInfo::new("happyview-lua", "Lua", "0.1.0"),
     execute: execute_script,
     validate: validate_source,
+    declarations: declarations::declarations,
 }
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
