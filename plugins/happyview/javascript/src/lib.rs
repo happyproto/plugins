@@ -1,6 +1,6 @@
 //! `happyview-javascript`: JavaScript as a HappyView interpreter plugin.
 //! QuickJS-ng through `happyview-quickjs`, compiled to `wasm32-wasip1`, behind
-//! the SDK's `execute` and `validate` exports.
+//! the SDK's `execute`, `validate` and `get_declarations` exports.
 //!
 //! JavaScript is what the engine already runs, so its front end prepares
 //! nothing: the script an author saved is the module QuickJS compiles.
@@ -15,6 +15,7 @@ interpreter_plugin! {
     info: PluginInfo::new("happyview-javascript", "JavaScript", "0.1.0"),
     execute: execute_script,
     validate: validate_source,
+    declarations: happyview_quickjs::declarations,
 }
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
