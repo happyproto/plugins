@@ -2,7 +2,8 @@
 -- any diagnostic as a failure, so a wrong type annotation in the generated
 -- files, or a field this file reads that they do not declare, fails it.
 local http = require("happyview.http")
-local objects = require("happyview.objects")
+local db = require("happyview.db")
+local record = require("happyview.record")
 
 ---@param input lexicons.com.example.feed.getPosts.Params
 ---@param ctx happyview.QueryCtx
@@ -12,7 +13,10 @@ function handle(input, ctx)
   local caller = ctx.caller_did
   local response = http.get("https://example.com", { headers = {} })
   local status = response.status
-  local doc = objects.chain():add():add():doc()
+  local page = db.records("com.example.feed.post"):where("text", "like", "%hello%"):limit(input.limit):run()
+  local first = page.records[1] and page.records[1].uri
+  local written = record.create("com.example.feed.post", { text = "hi" }, { rkey = "1" })
+  local doc = tostring(first) .. written.uri .. tostring(page.cursor)
 
   ---@type lexicons.com.example.feed.post.Record
   local post = {

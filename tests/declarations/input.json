@@ -898,60 +898,625 @@
     {
       "namespace": "happyview.atproto",
       "surface": {
+        "description": "AT Protocol identity and service resolution, blob download, label lookup, and attestation signing",
         "exports": [
           {
+            "description": "Resolve the AT Protocol service a DID's document advertises",
             "kind": "function",
-            "name": "resolve_service",
-            "params": []
+            "name": "resolve_service_endpoint",
+            "params": [
+              {
+                "description": "Subject DID",
+                "name": "did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "Resolve a handle or DID to both. `handle` is null unless it was confirmed in both directions, so an unverified one is never returned for display",
+            "kind": "function",
+            "name": "resolve_identity",
+            "params": [
+              {
+                "description": "A handle or a DID",
+                "name": "identifier",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "unknown"
+            }
+          },
+          {
+            "description": "Download a blob from a repo",
             "kind": "function",
             "name": "blob_download",
-            "params": []
+            "params": [
+              {
+                "description": "Repo DID",
+                "name": "did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Blob CID",
+                "name": "cid",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "object",
+              "properties": [
+                {
+                  "description": "UTF-8 text, or {\"$bytes\": \"<base64>\"} when not UTF-8",
+                  "name": "bytes",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "mime_type",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "size",
+                  "required": true,
+                  "type": {
+                    "kind": "integer"
+                  }
+                }
+              ]
+            }
           },
           {
+            "description": "Labels applied to one URI",
             "kind": "function",
-            "name": "labels_get",
-            "params": []
+            "name": "get_labels",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "items": {
+                "kind": "ref",
+                "name": "Label"
+              },
+              "kind": "array"
+            }
           },
           {
+            "description": "Labels applied to a set of URIs, keyed by URI",
             "kind": "function",
-            "name": "attest_sign",
-            "params": []
+            "name": "get_labels_batch",
+            "params": [
+              {
+                "description": "AT URIs",
+                "name": "uris",
+                "required": true,
+                "type": {
+                  "items": {
+                    "kind": "string"
+                  },
+                  "kind": "array"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "map",
+              "values": {
+                "kind": "unknown"
+              }
+            }
           },
           {
+            "description": "Sign a record with this instance's attestation key",
             "kind": "function",
-            "name": "attest_verify",
-            "params": []
+            "name": "sign",
+            "params": [
+              {
+                "description": "Record body",
+                "name": "record",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "kind": "map",
+              "values": {
+                "kind": "unknown"
+              }
+            }
+          },
+          {
+            "description": "Verify a record's attestation signature",
+            "kind": "function",
+            "name": "verify_signature",
+            "params": [
+              {
+                "description": "Record body",
+                "name": "record",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              },
+              {
+                "description": "Inline signature object",
+                "name": "signature",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              },
+              {
+                "description": "Repo DID the record claims to belong to",
+                "name": "repo_did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "boolean"
+            }
           }
         ],
         "namespace": "happyview.atproto",
-        "types": []
+        "types": [
+          {
+            "description": "A label a subscribed labeler applied",
+            "name": "Label",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "description": "The labeler's DID",
+                  "name": "src",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "What the label applies to",
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "The label's value",
+                  "name": "val",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "When it was created",
+                  "name": "cts",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "namespace": "happyview.backlinks",
+      "surface": {
+        "description": "Query records that reference a given AT URI",
+        "exports": [
+          {
+            "description": "Start a query for records referencing one AT URI",
+            "kind": "constructor",
+            "methods": [
+              {
+                "description": "Only referencing records in this collection; required before run()",
+                "mode": "lazy",
+                "name": "collection",
+                "params": [
+                  {
+                    "description": "Collection NSID; nil skips the step",
+                    "name": "collection",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Only referencing records in one repo",
+                "mode": "lazy",
+                "name": "did",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "did",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "At most this many records",
+                "mode": "lazy",
+                "name": "limit",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "n",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "integer"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Continue from a page's cursor",
+                "mode": "lazy",
+                "name": "cursor",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "cursor",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Run the query",
+                "mode": "immediate",
+                "name": "run",
+                "params": [],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordsPage"
+                }
+              }
+            ],
+            "name": "to",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        ],
+        "namespace": "happyview.backlinks",
+        "types": [
+          {
+            "description": "An indexed record beside where it came from",
+            "name": "RecordEnvelope",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "description": "The record's AT URI",
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "The repo it is in",
+                  "name": "did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its collection NSID",
+                  "name": "collection",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its record key",
+                  "name": "rkey",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its CID; null for a record written locally and not yet seen on the network",
+                  "name": "cid",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "description": "When the network's copy was indexed; null until it has been",
+                  "name": "indexed_at",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "description": "The record body",
+                  "name": "record",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "One page of referencing records",
+            "name": "RecordsPage",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "records",
+                  "required": true,
+                  "type": {
+                    "items": {
+                      "kind": "ref",
+                      "name": "RecordEnvelope"
+                    },
+                    "kind": "array"
+                  }
+                },
+                {
+                  "description": "Pass to cursor() for the next page; absent on the last",
+                  "name": "cursor",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                }
+              ]
+            }
+          }
+        ]
       }
     },
     {
       "namespace": "happyview.blobs",
       "surface": {
+        "description": "Store and read byte content addressed by the CID of its contents",
         "exports": [
           {
+            "description": "Store content and return the CID it is filed under",
             "kind": "function",
             "name": "put",
-            "params": []
+            "params": [
+              {
+                "description": "Content: a string, or {\"$bytes\": \"<base64>\"}",
+                "name": "bytes",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "The content's media type",
+                "name": "mime_type",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "string"
+            }
           },
           {
+            "description": "Read stored content; nil if nothing is stored under the CID",
             "kind": "function",
             "name": "get",
-            "params": []
+            "params": [
+              {
+                "description": "The content's CID",
+                "name": "cid",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "A blob's media type and size, without transferring it",
             "kind": "function",
             "name": "stat",
-            "params": []
+            "params": [
+              {
+                "description": "The content's CID",
+                "name": "cid",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "Whether content is stored under the CID",
             "kind": "function",
             "name": "exists",
-            "params": []
+            "params": [
+              {
+                "description": "The content's CID",
+                "name": "cid",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "boolean"
+            }
           }
         ],
         "namespace": "happyview.blobs",
@@ -959,57 +1524,515 @@
       }
     },
     {
-      "namespace": "happyview.caller",
+      "namespace": "happyview.db",
       "surface": {
+        "description": "Query indexed records",
         "exports": [
           {
-            "kind": "function",
-            "name": "create_record",
-            "params": []
+            "description": "Start a query over one collection",
+            "kind": "constructor",
+            "methods": [
+              {
+                "description": "Keep records whose field compares true; every where() must hold",
+                "mode": "lazy",
+                "name": "where",
+                "params": [
+                  {
+                    "description": "Record field path; nil skips the step",
+                    "name": "field",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  },
+                  {
+                    "description": "How to compare",
+                    "name": "op",
+                    "required": true,
+                    "type": {
+                      "kind": "ref",
+                      "name": "Operator"
+                    }
+                  },
+                  {
+                    "description": "What to compare with",
+                    "name": "value",
+                    "required": true,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "number"
+                        },
+                        {
+                          "kind": "boolean"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Order by a field",
+                "mode": "lazy",
+                "name": "sort",
+                "params": [
+                  {
+                    "description": "Record field path; nil skips the step",
+                    "name": "field",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  },
+                  {
+                    "description": "Default desc",
+                    "name": "direction",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "literal",
+                          "value": "asc"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "desc"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "At most this many records",
+                "mode": "lazy",
+                "name": "limit",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "n",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "integer"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Continue from a page's cursor",
+                "mode": "lazy",
+                "name": "cursor",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "cursor",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Only records in one repo",
+                "mode": "lazy",
+                "name": "did",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "did",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Run the query",
+                "mode": "immediate",
+                "name": "run",
+                "params": [],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordsPage"
+                }
+              },
+              {
+                "description": "Count what the query matches",
+                "mode": "immediate",
+                "name": "count",
+                "params": [],
+                "returns": {
+                  "kind": "integer"
+                }
+              },
+              {
+                "description": "The first record the query matches, or null",
+                "mode": "immediate",
+                "name": "first",
+                "params": [],
+                "returns": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "ref",
+                      "name": "RecordEnvelope"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "name": "records",
+            "params": [
+              {
+                "description": "Lexicon collection NSID",
+                "name": "collection",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
           },
           {
+            "description": "One record by AT URI, or null",
             "kind": "function",
-            "name": "put_record",
-            "params": []
+            "name": "get",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "ref",
+                  "name": "RecordEnvelope"
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "Substring search on one field, ranked by match position",
             "kind": "function",
-            "name": "delete_record",
-            "params": []
+            "name": "search",
+            "params": [
+              {
+                "description": "Lexicon collection NSID",
+                "name": "collection",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Record field path",
+                "name": "field",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Text to find",
+                "name": "query",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Max results, default 10, max 100",
+                "name": "limit",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "integer"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "items": {
+                "kind": "ref",
+                "name": "RecordEnvelope"
+              },
+              "kind": "array"
+            }
           },
           {
+            "description": "Which database the instance runs on",
             "kind": "function",
-            "name": "upload_blob",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "xrpc_query",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "xrpc_procedure",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "index_put",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "index_delete",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "lexicon_get",
-            "params": []
+            "name": "backend",
+            "params": [],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "literal",
+                  "value": "sqlite"
+                },
+                {
+                  "kind": "literal",
+                  "value": "postgres"
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           }
         ],
-        "namespace": "happyview.caller",
-        "types": []
+        "namespace": "happyview.db",
+        "types": [
+          {
+            "description": "An indexed record beside where it came from",
+            "name": "RecordEnvelope",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "description": "The record's AT URI",
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "The repo it is in",
+                  "name": "did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its collection NSID",
+                  "name": "collection",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its record key",
+                  "name": "rkey",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its CID; null for a record written locally and not yet seen on the network",
+                  "name": "cid",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "description": "When the network's copy was indexed; null until it has been",
+                  "name": "indexed_at",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "description": "The record body",
+                  "name": "record",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "One page of a query",
+            "name": "RecordsPage",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "records",
+                  "required": true,
+                  "type": {
+                    "items": {
+                      "kind": "ref",
+                      "name": "RecordEnvelope"
+                    },
+                    "kind": "array"
+                  }
+                },
+                {
+                  "description": "Pass to cursor() for the next page; absent on the last",
+                  "name": "cursor",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "A comparison where() accepts",
+            "name": "Operator",
+            "type": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "literal",
+                  "value": "="
+                },
+                {
+                  "kind": "literal",
+                  "value": "!="
+                },
+                {
+                  "kind": "literal",
+                  "value": "<"
+                },
+                {
+                  "kind": "literal",
+                  "value": ">"
+                },
+                {
+                  "kind": "literal",
+                  "value": "<="
+                },
+                {
+                  "kind": "literal",
+                  "value": ">="
+                },
+                {
+                  "kind": "literal",
+                  "value": "like"
+                },
+                {
+                  "kind": "literal",
+                  "value": "not like"
+                },
+                {
+                  "kind": "literal",
+                  "value": "ilike"
+                }
+              ],
+              "open": false
+            }
+          }
+        ]
       }
     },
     {
@@ -1098,10 +2121,23 @@
                   }
                 },
                 {
+                  "description": "The body as text, or {\"$bytes\": \"<base64>\"} when it is not valid UTF-8",
                   "name": "body",
                   "required": true,
                   "type": {
-                    "kind": "string"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "unknown"
+                        }
+                      }
+                    ],
+                    "open": false
                   }
                 },
                 {
@@ -1199,10 +2235,23 @@
                   }
                 },
                 {
+                  "description": "The body as text, or {\"$bytes\": \"<base64>\"} when it is not valid UTF-8",
                   "name": "body",
                   "required": true,
                   "type": {
-                    "kind": "string"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "unknown"
+                        }
+                      }
+                    ],
+                    "open": false
                   }
                 },
                 {
@@ -1300,10 +2349,23 @@
                   }
                 },
                 {
+                  "description": "The body as text, or {\"$bytes\": \"<base64>\"} when it is not valid UTF-8",
                   "name": "body",
                   "required": true,
                   "type": {
-                    "kind": "string"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "unknown"
+                        }
+                      }
+                    ],
+                    "open": false
                   }
                 },
                 {
@@ -1401,10 +2463,23 @@
                   }
                 },
                 {
+                  "description": "The body as text, or {\"$bytes\": \"<base64>\"} when it is not valid UTF-8",
                   "name": "body",
                   "required": true,
                   "type": {
-                    "kind": "string"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "unknown"
+                        }
+                      }
+                    ],
+                    "open": false
                   }
                 },
                 {
@@ -1502,10 +2577,23 @@
                   }
                 },
                 {
+                  "description": "The body as text, or {\"$bytes\": \"<base64>\"} when it is not valid UTF-8",
                   "name": "body",
                   "required": true,
                   "type": {
-                    "kind": "string"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "unknown"
+                        }
+                      }
+                    ],
+                    "open": false
                   }
                 },
                 {
@@ -1603,10 +2691,23 @@
                   }
                 },
                 {
+                  "description": "The body as text, or {\"$bytes\": \"<base64>\"} when it is not valid UTF-8",
                   "name": "body",
                   "required": true,
                   "type": {
-                    "kind": "string"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "unknown"
+                        }
+                      }
+                    ],
+                    "open": false
                   }
                 },
                 {
@@ -1622,18 +2723,6 @@
                 }
               ]
             }
-          },
-          {
-            "description": "The plugin's effective allowed-hosts list",
-            "kind": "function",
-            "name": "allowed_hosts",
-            "params": [],
-            "returns": {
-              "items": {
-                "kind": "string"
-              },
-              "kind": "array"
-            }
           }
         ],
         "namespace": "happyview.http",
@@ -1641,206 +2730,3037 @@
       }
     },
     {
-      "namespace": "happyview.linked",
+      "namespace": "happyview.jobs",
       "surface": {
+        "description": "Enqueue background jobs for the job worker",
         "exports": [
           {
+            "description": "Enqueue a job; returns its id",
             "kind": "function",
-            "name": "list",
-            "params": []
+            "name": "create",
+            "params": [
+              {
+                "description": "Free-form job type name",
+                "name": "job_type",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Job input; nil sends {}",
+                "name": "input",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "map",
+                      "values": {
+                        "kind": "unknown"
+                      }
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              },
+              {
+                "description": "Job options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Inherit the caller's PDS auth into the job; default false",
+                          "name": "auth",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "string"
+            }
           },
           {
+            "description": "Read one of the caller's own jobs; nil if it is not theirs or absent",
             "kind": "function",
-            "name": "create_record",
-            "params": []
+            "name": "get",
+            "params": [
+              {
+                "description": "The job's id",
+                "name": "id",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "Read any user's job; nil if absent",
             "kind": "function",
-            "name": "put_record",
-            "params": []
+            "name": "get_any",
+            "params": [
+              {
+                "description": "The job's id",
+                "name": "id",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "List jobs across every user, newest first",
             "kind": "function",
-            "name": "delete_record",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "upload_blob",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "call",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "jobs_create",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "jobs_get",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "jobs_get_any",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "jobs_list_any",
-            "params": []
+            "name": "list_any",
+            "params": [
+              {
+                "description": "List filters",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Statuses to include; default every status",
+                          "name": "status",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "items": {
+                                  "kind": "unknown"
+                                },
+                                "kind": "array"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Only jobs of this type",
+                          "name": "job_type",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Maximum jobs; the host defaults to 50 and caps at 200",
+                          "name": "limit",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "integer"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "items": {
+                "kind": "unknown"
+              },
+              "kind": "array"
+            }
           }
         ],
-        "namespace": "happyview.linked",
+        "namespace": "happyview.jobs",
         "types": []
       }
     },
     {
-      "namespace": "happyview.objects",
+      "namespace": "happyview.linked_repos",
       "surface": {
+        "description": "Act through repos an admin has linked to this instance",
         "exports": [
           {
+            "description": "Every linked-repo grant this plugin may act through",
+            "kind": "function",
+            "name": "list",
+            "params": [],
+            "returns": {
+              "items": {
+                "kind": "ref",
+                "name": "Grant"
+              },
+              "kind": "array"
+            }
+          },
+          {
+            "description": "Act through one linked-repo grant, by DID",
             "kind": "constructor",
             "methods": [
               {
-                "mode": "lazy",
-                "name": "add",
-                "params": []
+                "description": "Create a record in the linked repo",
+                "mode": "immediate",
+                "name": "create_record",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "collection",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "record",
+                          "required": true,
+                          "type": {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          }
+                        },
+                        {
+                          "description": "Generated by the PDS when absent",
+                          "name": "rkey",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordRef"
+                }
               },
               {
+                "description": "Create or replace a record at a key; without swap_cid this needs both create and update scope",
                 "mode": "immediate",
-                "name": "doc",
-                "params": []
+                "name": "put_record",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "collection",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "rkey",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "record",
+                          "required": true,
+                          "type": {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          }
+                        },
+                        {
+                          "description": "Refuse unless this is the record's current CID",
+                          "name": "swap_cid",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordRef"
+                }
+              },
+              {
+                "description": "Delete a record from the linked repo",
+                "mode": "immediate",
+                "name": "delete_record",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "collection",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "rkey",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "description": "Upload a blob to the linked repo",
+                "mode": "immediate",
+                "name": "upload_blob",
+                "params": [
+                  {
+                    "description": "Blob content: a string, or {\"$bytes\": \"<base64>\"}",
+                    "name": "bytes",
+                    "required": true,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "bytes"
+                        }
+                      ],
+                      "open": false
+                    }
+                  },
+                  {
+                    "description": "Blob MIME type",
+                    "name": "mime_type",
+                    "required": true,
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              },
+              {
+                "description": "Call any XRPC method as the linked repo; its scopes are checked by the PDS alone",
+                "mode": "immediate",
+                "name": "call",
+                "params": [
+                  {
+                    "description": "XRPC method NSID",
+                    "name": "nsid",
+                    "required": true,
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "opts",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "object",
+                          "properties": [
+                            {
+                              "name": "params",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "unknown"
+                                    }
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "input",
+                              "required": true,
+                              "type": {
+                                "kind": "unknown"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "unknown"
+                }
               }
             ],
-            "name": "chain",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "records_query",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "records_count",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "records_get",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "records_search",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "table_query",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "backlinks_query",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "backend",
-            "params": []
+            "name": "get",
+            "params": [
+              {
+                "description": "The linked repo's DID",
+                "name": "did",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
           }
         ],
-        "namespace": "happyview.objects",
-        "types": []
+        "namespace": "happyview.linked_repos",
+        "types": [
+          {
+            "description": "A linked-repo grant",
+            "name": "Grant",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "id",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "did",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "handle",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "reason",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "status",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "scopes",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Where a written record is",
+            "name": "RecordRef",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "cid",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "namespace": "happyview.record",
+      "surface": {
+        "description": "Record writes as the calling user, local index writes, and validation",
+        "exports": [
+          {
+            "description": "Create a record in the user's own repo",
+            "kind": "function",
+            "name": "create",
+            "params": [
+              {
+                "description": "Lexicon collection NSID",
+                "name": "collection",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Record body",
+                "name": "record",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              },
+              {
+                "description": "Create options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Record key; generated by the PDS when absent",
+                          "name": "rkey",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Repo DID; defaults to the caller's own, the only repo a caller-acting write can target",
+                          "name": "repo",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Left out: checked here, and by the PDS when it can resolve the lexicon. true: also strictly by the PDS. false: not checked",
+                          "name": "validate",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "ref",
+              "name": "RecordRef"
+            }
+          },
+          {
+            "description": "Create-or-update a record in the user's own repo",
+            "kind": "function",
+            "name": "put",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Record body",
+                "name": "record",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              },
+              {
+                "description": "Put options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "Refuse unless this is the record's current CID",
+                          "name": "swap_cid",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "description": "Left out: checked here, and by the PDS when it can resolve the lexicon. true: also strictly by the PDS. false: not checked",
+                          "name": "validate",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "ref",
+              "name": "RecordRef"
+            }
+          },
+          {
+            "description": "Delete a record from the user's own repo",
+            "kind": "function",
+            "name": "delete",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "null"
+            }
+          },
+          {
+            "description": "Upload a blob to the user's own repo",
+            "kind": "function",
+            "name": "upload_blob",
+            "params": [
+              {
+                "description": "Blob content: a string, or {\"$bytes\": \"<base64>\"}",
+                "name": "bytes",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Blob MIME type",
+                "name": "mime_type",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "map",
+              "values": {
+                "kind": "unknown"
+              }
+            }
+          },
+          {
+            "description": "One indexed record by AT URI, or null",
+            "kind": "function",
+            "name": "load",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "ref",
+                  "name": "RecordEnvelope"
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
+          },
+          {
+            "description": "Write a record straight into the local index, bypassing the PDS",
+            "kind": "function",
+            "name": "save_local",
+            "params": [
+              {
+                "description": "Lexicon collection NSID",
+                "name": "collection",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Record key",
+                "name": "rkey",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Record body",
+                "name": "record",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              },
+              {
+                "description": "Repo DID; defaults to the calling user",
+                "name": "did",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "ref",
+              "name": "RecordRef"
+            }
+          },
+          {
+            "description": "Remove a record from the local index, bypassing the PDS",
+            "kind": "function",
+            "name": "delete_local",
+            "params": [
+              {
+                "description": "AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "boolean"
+            }
+          },
+          {
+            "description": "Normalize a record against its lexicon and check required fields",
+            "kind": "function",
+            "name": "validate",
+            "params": [
+              {
+                "description": "Lexicon collection NSID",
+                "name": "collection",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Record body",
+                "name": "record",
+                "required": true,
+                "type": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "kind": "map",
+              "values": {
+                "kind": "unknown"
+              }
+            }
+          },
+          {
+            "description": "The lexicon document this instance holds for a collection, or null",
+            "kind": "function",
+            "name": "lexicon",
+            "params": [
+              {
+                "description": "Lexicon collection NSID",
+                "name": "collection",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
+          }
+        ],
+        "namespace": "happyview.record",
+        "types": [
+          {
+            "description": "Where a written record is",
+            "name": "RecordRef",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "description": "The record's AT URI",
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "The record's CID",
+                  "name": "cid",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "An indexed record beside where it came from",
+            "name": "RecordEnvelope",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "description": "The record's AT URI",
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "The repo it is in",
+                  "name": "did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its collection NSID",
+                  "name": "collection",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its record key",
+                  "name": "rkey",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "description": "Its CID; a PDS write carries it at once, a save_local row has none",
+                  "name": "cid",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "description": "When the network's copy was indexed; null until the network echoes the record",
+                  "name": "indexed_at",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "description": "The stored body",
+                  "name": "record",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
       }
     },
     {
       "namespace": "happyview.spaces",
       "surface": {
+        "description": "Read and write permissioned spaces: records, membership and invites",
         "exports": [
           {
-            "kind": "function",
-            "name": "info",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "query",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "members",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "access",
-            "params": []
-          },
-          {
+            "description": "Create a space",
             "kind": "function",
             "name": "create",
-            "params": []
+            "params": [
+              {
+                "description": "spaceType, skey and optional fields",
+                "name": "opts",
+                "required": true,
+                "type": {
+                  "kind": "object",
+                  "properties": [
+                    {
+                      "name": "spaceType",
+                      "required": true,
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    {
+                      "name": "skey",
+                      "required": true,
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    {
+                      "name": "display_name",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "description",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "read_policy",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "write_policy",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "app_access",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "config",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "kind": "ref",
+              "name": "Space"
+            }
           },
           {
+            "description": "Redeem an invite token, joining the space it names",
             "kind": "function",
             "name": "accept_invite",
-            "params": []
+            "params": [
+              {
+                "name": "opts",
+                "required": true,
+                "type": {
+                  "kind": "object",
+                  "properties": [
+                    {
+                      "name": "token",
+                      "required": true,
+                      "type": {
+                        "kind": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "kind": "ref",
+              "name": "Space"
+            }
           },
           {
+            "description": "A space's fields by URI, or nil",
             "kind": "function",
-            "name": "write_record",
-            "params": []
+            "name": "info",
+            "params": [
+              {
+                "description": "Space AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ],
+            "returns": {
+              "kind": "union",
+              "members": [
+                {
+                  "kind": "ref",
+                  "name": "Space"
+                },
+                {
+                  "kind": "null"
+                }
+              ],
+              "open": false
+            }
           },
           {
+            "description": "Page through a space's records",
             "kind": "function",
-            "name": "put_record",
-            "params": []
+            "name": "query",
+            "params": [
+              {
+                "name": "opts",
+                "required": true,
+                "type": {
+                  "kind": "object",
+                  "properties": [
+                    {
+                      "name": "uri",
+                      "required": true,
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    {
+                      "name": "collection",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "limit",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "integer"
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    },
+                    {
+                      "name": "cursor",
+                      "required": false,
+                      "type": {
+                        "kind": "union",
+                        "members": [
+                          {
+                            "kind": "string"
+                          },
+                          {
+                            "kind": "null"
+                          }
+                        ],
+                        "open": false
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "kind": "ref",
+              "name": "RecordsPage"
+            }
           },
           {
-            "kind": "function",
-            "name": "delete_record",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "add_member",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "set_member",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "remove_member",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "update",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "delete",
-            "params": []
-          },
-          {
-            "kind": "function",
-            "name": "create_invite",
-            "params": []
+            "description": "Act on one space, by URI",
+            "kind": "constructor",
+            "methods": [
+              {
+                "description": "Write a new record into the space as the caller",
+                "mode": "immediate",
+                "name": "write_record",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "collection",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "record",
+                          "required": true,
+                          "type": {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordRef"
+                }
+              },
+              {
+                "description": "Create or replace a record at a key",
+                "mode": "immediate",
+                "name": "put_record",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "collection",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "rkey",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "record",
+                          "required": true,
+                          "type": {
+                            "kind": "map",
+                            "values": {
+                              "kind": "unknown"
+                            }
+                          }
+                        },
+                        {
+                          "description": "Refuse unless this is the record's current CID",
+                          "name": "swap_cid",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordRef"
+                }
+              },
+              {
+                "description": "Delete a record",
+                "mode": "immediate",
+                "name": "delete_record",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "collection",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "rkey",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "description": "Refuse unless this is the record's current CID",
+                          "name": "swap_cid",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "description": "Add a member",
+                "mode": "immediate",
+                "name": "add_member",
+                "params": [
+                  {
+                    "description": "access is given as the access word or as read and write",
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "did",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "access",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "read",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "write",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "is_delegation",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "Member"
+                }
+              },
+              {
+                "description": "Add a member or change what they may do",
+                "mode": "immediate",
+                "name": "set_member",
+                "params": [
+                  {
+                    "description": "access is given as the access word or as read and write",
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "did",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "access",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "read",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "write",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "is_delegation",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "Member"
+                }
+              },
+              {
+                "description": "Another name for set_member",
+                "mode": "immediate",
+                "name": "put_member",
+                "params": [
+                  {
+                    "description": "access is given as the access word or as read and write",
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "did",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        },
+                        {
+                          "name": "access",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "read",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "write",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        },
+                        {
+                          "name": "is_delegation",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "boolean"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "Member"
+                }
+              },
+              {
+                "description": "Remove a member",
+                "mode": "immediate",
+                "name": "remove_member",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": true,
+                    "type": {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "name": "did",
+                          "required": true,
+                          "type": {
+                            "kind": "string"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "description": "Change the space's fields; display_name and description are cleared by false or null",
+                "mode": "immediate",
+                "name": "update",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "object",
+                          "properties": [
+                            {
+                              "name": "display_name",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "literal",
+                                    "value": false
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "description",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "literal",
+                                    "value": false
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "read_policy",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "unknown"
+                                    }
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "write_policy",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "unknown"
+                                    }
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "app_access",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "unknown"
+                                    }
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "config",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "unknown"
+                                    }
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "Space"
+                }
+              },
+              {
+                "description": "Delete the space",
+                "mode": "immediate",
+                "name": "delete",
+                "params": [],
+                "returns": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "description": "Mint an invite; access is given as the access word or as read and write",
+                "mode": "immediate",
+                "name": "create_invite",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "object",
+                          "properties": [
+                            {
+                              "name": "access",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "read",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "write",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "max_uses",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "description": "RFC 3339",
+                              "name": "expires_at",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "Invite"
+                }
+              },
+              {
+                "description": "Every member",
+                "mode": "immediate",
+                "name": "members",
+                "params": [],
+                "returns": {
+                  "items": {
+                    "kind": "ref",
+                    "name": "Member"
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "description": "Whether a DID is a member",
+                "mode": "immediate",
+                "name": "is_member",
+                "params": [
+                  {
+                    "name": "did",
+                    "required": true,
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "boolean"
+                }
+              },
+              {
+                "description": "A DID's access word, or null when they are not a member",
+                "mode": "immediate",
+                "name": "access",
+                "params": [
+                  {
+                    "name": "did",
+                    "required": true,
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "string"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              },
+              {
+                "description": "Page through the space's records",
+                "mode": "immediate",
+                "name": "records",
+                "params": [
+                  {
+                    "name": "opts",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "object",
+                          "properties": [
+                            {
+                              "name": "collection",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "limit",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            },
+                            {
+                              "name": "cursor",
+                              "required": false,
+                              "type": {
+                                "kind": "union",
+                                "members": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ],
+                                "open": false
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ],
+                "returns": {
+                  "kind": "ref",
+                  "name": "RecordsPage"
+                }
+              }
+            ],
+            "name": "get",
+            "params": [
+              {
+                "description": "Space AT URI",
+                "name": "uri",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
           }
         ],
         "namespace": "happyview.spaces",
+        "types": [
+          {
+            "description": "A space's fields",
+            "name": "Space",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "id",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "authority_did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "creator_did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "spaceType",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "skey",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "display_name",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "description",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "read_policy",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                },
+                {
+                  "name": "write_policy",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                },
+                {
+                  "name": "app_access",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                },
+                {
+                  "name": "config",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                },
+                {
+                  "name": "revision",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "created_at",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "updated_at",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "A record in a space",
+            "name": "SpaceRecord",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "collection",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "rkey",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "record",
+                  "required": true,
+                  "type": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  }
+                },
+                {
+                  "name": "cid",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "author_did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "One page of a space's records",
+            "name": "RecordsPage",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "records",
+                  "required": true,
+                  "type": {
+                    "items": {
+                      "kind": "ref",
+                      "name": "SpaceRecord"
+                    },
+                    "kind": "array"
+                  }
+                },
+                {
+                  "name": "cursor",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "A member and what they may do; access is the nearest word for the read/write pair",
+            "name": "Member",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "did",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "access",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "read",
+                  "required": true,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                {
+                  "name": "write",
+                  "required": true,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "An invite; token is returned only here, when it is created",
+            "name": "Invite",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "invite_id",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "token",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "access",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "read",
+                  "required": true,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                {
+                  "name": "write",
+                  "required": true,
+                  "type": {
+                    "kind": "boolean"
+                  }
+                },
+                {
+                  "name": "max_uses",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                },
+                {
+                  "name": "expires_at",
+                  "required": false,
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ],
+                    "open": false
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "description": "Where a written record is",
+            "name": "RecordRef",
+            "type": {
+              "kind": "object",
+              "properties": [
+                {
+                  "name": "uri",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "cid",
+                  "required": true,
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "namespace": "happyview.sql",
+      "surface": {
+        "description": "Raw SQL and a table builder over the operator's own tables",
+        "exports": [
+          {
+            "description": "Start a query over one table",
+            "kind": "constructor",
+            "methods": [
+              {
+                "description": "Keep rows whose column compares true; every where() must hold",
+                "mode": "lazy",
+                "name": "where",
+                "params": [
+                  {
+                    "description": "Column name; nil skips the step",
+                    "name": "column",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  },
+                  {
+                    "description": "How to compare",
+                    "name": "op",
+                    "required": true,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "literal",
+                          "value": "="
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "!="
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "<"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": ">"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "<="
+                        },
+                        {
+                          "kind": "literal",
+                          "value": ">="
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "like"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "not like"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "ilike"
+                        }
+                      ],
+                      "open": false
+                    }
+                  },
+                  {
+                    "description": "What to compare with",
+                    "name": "value",
+                    "required": true,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "number"
+                        },
+                        {
+                          "kind": "boolean"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Order by a column",
+                "mode": "lazy",
+                "name": "sort",
+                "params": [
+                  {
+                    "description": "Column name; nil skips the step",
+                    "name": "column",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "string"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  },
+                  {
+                    "description": "Default desc",
+                    "name": "direction",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "literal",
+                          "value": "asc"
+                        },
+                        {
+                          "kind": "literal",
+                          "value": "desc"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "At most this many rows",
+                "mode": "lazy",
+                "name": "limit",
+                "params": [
+                  {
+                    "description": "nil skips the step",
+                    "name": "n",
+                    "required": false,
+                    "type": {
+                      "kind": "union",
+                      "members": [
+                        {
+                          "kind": "integer"
+                        },
+                        {
+                          "kind": "null"
+                        }
+                      ],
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              {
+                "description": "Run the query",
+                "mode": "immediate",
+                "name": "run",
+                "params": [],
+                "returns": {
+                  "items": {
+                    "kind": "map",
+                    "values": {
+                      "kind": "unknown"
+                    }
+                  },
+                  "kind": "array"
+                }
+              },
+              {
+                "description": "Count the rows the query matches",
+                "mode": "immediate",
+                "name": "count",
+                "params": [],
+                "returns": {
+                  "kind": "integer"
+                }
+              }
+            ],
+            "name": "from",
+            "params": [
+              {
+                "description": "Table name",
+                "name": "table",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              }
+            ]
+          },
+          {
+            "description": "Run a statement with backend-native placeholders",
+            "kind": "function",
+            "name": "raw",
+            "params": [
+              {
+                "description": "Statement with backend-native placeholders",
+                "name": "sql",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Bind values",
+                "name": "params",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "items": {
+                        "kind": "unknown"
+                      },
+                      "kind": "array"
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "items": {
+                "kind": "map",
+                "values": {
+                  "kind": "unknown"
+                }
+              },
+              "kind": "array"
+            }
+          }
+        ],
+        "namespace": "happyview.sql",
+        "types": []
+      }
+    },
+    {
+      "namespace": "happyview.xrpc",
+      "surface": {
+        "description": "XRPC query and procedure calls as the calling user",
+        "exports": [
+          {
+            "description": "Send an XRPC query as the calling user",
+            "kind": "function",
+            "name": "query",
+            "params": [
+              {
+                "description": "XRPC method NSID",
+                "name": "method",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Query parameters",
+                "name": "params",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "map",
+                      "values": {
+                        "kind": "unknown"
+                      }
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "unknown"
+            }
+          },
+          {
+            "description": "Send an XRPC procedure as the calling user",
+            "kind": "function",
+            "name": "procedure",
+            "params": [
+              {
+                "description": "XRPC method NSID",
+                "name": "method",
+                "required": true,
+                "type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "description": "Procedure input body",
+                "name": "input",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "map",
+                      "values": {
+                        "kind": "unknown"
+                      }
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              },
+              {
+                "description": "Query parameters",
+                "name": "params",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "map",
+                      "values": {
+                        "kind": "unknown"
+                      }
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
+              }
+            ],
+            "returns": {
+              "kind": "unknown"
+            }
+          }
+        ],
+        "namespace": "happyview.xrpc",
         "types": []
       }
     }
