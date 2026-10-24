@@ -133,3 +133,11 @@ mod tests {
         assert_eq!(response_body("head", b"ignored".to_vec()), json!(""));
     }
 }
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn the_surface_parses() {
+        happyview_plugin_sdk::declarations::assert_surface_parses(&super::surface());
+    }
+}
