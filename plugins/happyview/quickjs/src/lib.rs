@@ -18,6 +18,7 @@ mod calls;
 pub mod conformance;
 mod convert;
 mod ctx;
+mod declarations;
 mod imports;
 mod positions;
 mod sandbox;
@@ -41,6 +42,7 @@ pub use backend::fake;
 pub use backend::Backend;
 use budget::Budget;
 use calls::{Calls, ClearOnDrop, Unsettled};
+pub use declarations::{declarations, render as render_declarations};
 pub use positions::{remap, Chunks, Mapping, Position, SourceMap};
 
 /// The step from what an author wrote to the JavaScript QuickJS compiles.

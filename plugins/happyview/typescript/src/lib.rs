@@ -21,6 +21,7 @@ interpreter_plugin! {
     info: PluginInfo::new("happyview-typescript", "TypeScript", "0.1.0"),
     execute: execute_script,
     validate: validate_source,
+    declarations: happyview_quickjs::declarations,
 }
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {

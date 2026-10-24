@@ -212,8 +212,8 @@ mod tests {
         records.methods = vec![
             ApiMethod::lazy("where"),
             ApiMethod {
-                name: "sideways".into(),
                 mode: "sideways".into(),
+                ..ApiMethod::lazy("sideways")
             },
             ApiMethod::lazy("limit"),
             ApiMethod::immediate("all"),

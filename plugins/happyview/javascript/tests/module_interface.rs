@@ -25,6 +25,7 @@ const EXPECTED_EXPORTS: &[&str] = &[
     "alloc",
     "dealloc",
     "execute",
+    "get_declarations",
     "memory",
     "plugin_info",
     "validate",
