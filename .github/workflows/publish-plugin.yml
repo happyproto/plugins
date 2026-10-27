@@ -82,4 +82,4 @@ jobs:
           credential: ${{ secrets.HPY_CREDENTIAL }}
           working-directory: ${{ env.DIR }}
           wasm: ${{ steps.module.outputs.wasm }}
-          hpy-channel: beta
+          hpy-channel: alpha
