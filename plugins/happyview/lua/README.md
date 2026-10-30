@@ -291,7 +291,7 @@ local test = require("internal.test")
 
 describe("getThing", function()
   before_each(function()
-    test.mock("http", { get = { status = 200, body = "{}" } })
+    test.mock("happyview.http", { get = { status = 200, body = "{}" } })
   end)
 
   it("answers as the caller", function()
