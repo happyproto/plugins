@@ -1,6 +1,7 @@
 //! `happyview.xrpc`: XRPC query and procedure calls as the calling script's
-//! user. A thin translator over two SDK host wrappers — this crate neither
-//! builds requests nor talks to the network itself.
+//! user, and who that user is according to their PDS. A thin translator over
+//! three SDK host wrappers — this crate neither builds requests nor talks to
+//! the network itself.
 
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
@@ -39,12 +40,23 @@ fn surface() -> ApiSurface {
                 .param("params", "object?", "Query parameters")
                 .returns(json!({"type": "unknown", "description": "The method's output, as the PDS answered"})),
         )
+        .export(
+            ApiExport::function("session")
+                .describe("The calling user's account, as their PDS reports it")
+                .returns(json!({"type": "object", "properties": [
+                    {"name": "did", "type": "string"},
+                    {"name": "handle", "type": "string?"},
+                    {"name": "email", "type": "string?", "description": "Absent unless the user's session was granted transition:email"},
+                    {"name": "email_confirmed", "type": "boolean?"}
+                ]})),
+        )
 }
 
 fn dispatch(function: &str, args: &[Value], _ctx: &CallContext) -> Result<Value, PluginError> {
     match function {
         "query" => query(args),
         "procedure" => procedure(args),
+        "session" => session(),
         other => Err(PluginError::unknown_function(other)),
     }
 }
@@ -64,6 +76,10 @@ fn procedure(args: &[Value]) -> Result<Value, PluginError> {
         input,
         params,
     })
+}
+
+fn session() -> Result<Value, PluginError> {
+    serde_json::to_value(host::caller_get_session()?).map_err(PluginError::from)
 }
 
 fn str_arg(args: &[Value], index: usize, name: &str) -> Result<String, PluginError> {
