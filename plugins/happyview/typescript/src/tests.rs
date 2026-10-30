@@ -307,6 +307,45 @@ fn commonjs_forms_are_refused_on_their_lines() {
     );
 }
 
+/// TypeScript 7 removed `module Foo { }` as a spelling of a namespace. A
+/// string-named `declare module "x"` and `declare global` are still
+/// TypeScript and are not refused.
+#[test]
+fn a_namespace_declared_with_module_is_refused_on_its_line() {
+    let error =
+        refused("const a = 1;\nmodule Shapes {\n  export const b = 2;\n}\nexport default () => a;");
+    assert_eq!(error.line, Some(2));
+    assert!(error.message.contains("namespace Shapes"), "{error:?}");
+
+    assert_eq!(
+        returned(run("declare module \"x\" { export const y: number; }
+             declare global { interface Window { z: number } }
+             namespace Shapes { export const b = 2; }
+             export default () => Shapes.b;")),
+        json!(2)
+    );
+}
+
+/// TypeScript 7 removed import assertions; import attributes, written with
+/// `with`, replace them. The AST holds both the same way, so the keyword is
+/// what tells them apart.
+#[test]
+fn import_assertions_are_refused_on_their_lines() {
+    let error = refused("const a = 1;\nimport data from \"./data.json\" assert { type: \"json\" };\nexport default () => data;");
+    assert_eq!(error.line, Some(2));
+    assert!(error.message.contains("with {"), "{error:?}");
+
+    let error = refused(
+        "export default () => 1;\nexport * from \"./data.json\" assert { type: \"json\" };",
+    );
+    assert_eq!(error.line, Some(2));
+
+    let error = refused(
+        "export default () => 1;\nexport { a } from \"./a.json\" assert { type: \"json\" };",
+    );
+    assert_eq!(error.line, Some(2));
+}
+
 #[test]
 fn decorators_and_accessors_are_refused_on_their_lines() {
     let error = refused(

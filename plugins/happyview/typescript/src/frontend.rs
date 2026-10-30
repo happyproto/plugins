@@ -28,7 +28,8 @@ use swc_common::sync::Lrc;
 use swc_common::{BytePos, FileName, Globals, Span, Spanned, GLOBALS};
 use swc_ecma_ast::{
     AutoAccessor, Decorator, EsVersion, JSXElement, JSXFragment, Module, ModuleDecl, ModuleItem,
-    TsExportAssignment, TsImportEqualsDecl, TsModuleRef,
+    ObjectLit, Str, TsExportAssignment, TsImportEqualsDecl, TsModuleDecl, TsModuleName,
+    TsModuleRef,
 };
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax, TsSyntax};
 use swc_ecma_transforms_typescript::{typescript, TsImportExportAssignConfig};
@@ -208,6 +209,21 @@ impl Refusals<'_> {
         self.errors
             .push(syntax_error(line(self.cm, span.lo), message));
     }
+
+    /// Refuse attributes on an import or re-export from `src` when they are
+    /// introduced by `assert`. The AST holds `assert { }` and `with { }` the
+    /// same way, so the keyword between the two is what tells them apart.
+    fn refuse_assertion(&mut self, span: Span, src: &Str, with: Option<&ObjectLit>) {
+        let Some(with) = with else {
+            return;
+        };
+        let file = self.cm.lookup_char_pos(src.span.hi).file;
+        let from = (src.span.hi - file.start_pos).0 as usize;
+        let to = (with.span.lo - file.start_pos).0 as usize;
+        if file.src.get(from..to).map(str::trim) == Some("assert") {
+            self.refuse(span, IMPORT_ASSERTION);
+        }
+    }
 }
 
 const DECORATORS: &str = "decorators are not supported: QuickJS-ng, which runs the script, \
@@ -218,10 +234,30 @@ const IMPORT_REQUIRE: &str = "`import x = require(...)` is CommonJS, which a scr
                               load: write `import x from \"...\"`";
 const EXPORT_ASSIGNMENT: &str =
     "`export =` is CommonJS, which a script cannot use: write `export default`";
+const IMPORT_ASSERTION: &str = "import assertions were removed in TypeScript 7: write \
+                                `with { ... }` in place of `assert { ... }`";
 
 impl Visit for Refusals<'_> {
     fn visit_decorator(&mut self, decorator: &Decorator) {
         self.refuse(decorator.span, DECORATORS);
+    }
+
+    /// TypeScript 7 removed `module Foo { }` as a way to write a namespace.
+    /// A module named by a string, `declare module "x" { }`, and `declare
+    /// global { }` are still TypeScript.
+    fn visit_ts_module_decl(&mut self, decl: &TsModuleDecl) {
+        if let TsModuleName::Ident(id) = &decl.id {
+            if !decl.namespace && !decl.global {
+                self.refuse(
+                    decl.span,
+                    &format!(
+                        "`module {0} {{ }}` was removed in TypeScript 7: write `namespace {0} {{ }}`",
+                        id.sym
+                    ),
+                );
+            }
+        }
+        decl.visit_children_with(self);
     }
 
     fn visit_auto_accessor(&mut self, accessor: &AutoAccessor) {
@@ -249,6 +285,17 @@ impl Visit for Refusals<'_> {
                 span,
                 ..
             })) => self.refuse(*span, EXPORT_ASSIGNMENT),
+            ModuleItem::ModuleDecl(ModuleDecl::Import(import)) => {
+                self.refuse_assertion(import.span, &import.src, import.with.as_deref());
+            }
+            ModuleItem::ModuleDecl(ModuleDecl::ExportAll(export)) => {
+                self.refuse_assertion(export.span, &export.src, export.with.as_deref());
+            }
+            ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)) => {
+                if let Some(src) = &export.src {
+                    self.refuse_assertion(export.span, src, export.with.as_deref());
+                }
+            }
             _ => {}
         }
         item.visit_children_with(self);
