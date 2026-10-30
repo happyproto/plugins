@@ -378,6 +378,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "happyview-account"
+version = "0.1.0"
+dependencies = [
+ "happyview-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "happyview-atproto"
 version = "0.1.0"
 dependencies = [

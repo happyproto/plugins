@@ -254,6 +254,7 @@ jobs:
             blobs,
             record,
             xrpc,
+            account,
             atproto,
             linked-repos,
             jobs,

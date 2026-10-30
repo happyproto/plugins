@@ -13,6 +13,7 @@ members = [
 # the default set leaves a bare workspace build building the members that
 # share one target.
 default-members = [
+    "plugins/happyview/account",
     "plugins/happyview/atproto",
     "plugins/happyview/auth-itch",
     "plugins/happyview/auth-microsoft",

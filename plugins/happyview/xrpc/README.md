@@ -26,9 +26,9 @@ end
 - `procedure(method[, input[, params]])` — an XRPC procedure (POST), as the
   calling user.
 - `session()` — the calling user's account as their own PDS reports it
-  (`com.atproto.server.getSession`): `{did, handle?, email?, email_confirmed?}`.
-  `email` is there only when the user's session was granted
-  `transition:email` and the account has one; its absence is not an error.
+  (`com.atproto.server.getSession`): `{did, handle?}`. Their email address
+  needs its own capability, `caller:email`, and is `happyview-account`'s
+  `email()`.
 
 Neither builds the request itself; both hand the method, input and query
 parameters straight to the host, which resolves where the call goes and
@@ -55,7 +55,7 @@ Grant it only to scripts an operator trusts with the user's whole account.
 
 Imports exactly `host_caller_xrpc_query`, `host_caller_get_session`,
 `host_caller_xrpc_procedure`. `session()` needs `caller:read` and a caller
-session (`NO_SESSION` otherwise).
+session (`NO_SESSION` otherwise, including for a service-auth caller).
 
 ## Build
 

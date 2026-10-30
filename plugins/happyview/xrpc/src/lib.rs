@@ -45,9 +45,7 @@ fn surface() -> ApiSurface {
                 .describe("The calling user's account, as their PDS reports it")
                 .returns(json!({"type": "object", "properties": [
                     {"name": "did", "type": "string"},
-                    {"name": "handle", "type": "string?"},
-                    {"name": "email", "type": "string?", "description": "Absent unless the user's session was granted transition:email"},
-                    {"name": "email_confirmed", "type": "boolean?"}
+                    {"name": "handle", "type": "string?"}
                 ]})),
         )
 }
