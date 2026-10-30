@@ -39,7 +39,7 @@ import { describe, it, expect, beforeEach, test } from "internal.test";
 
 describe("getThing", () => {
   beforeEach(() => {
-    test.mock("http", { get: { status: 200, body: "{}" } });
+    test.mock("happyview.http", { get: { status: 200, body: "{}" } });
   });
 
   it("answers as the caller", async () => {
