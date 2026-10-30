@@ -68,6 +68,10 @@ alike, and `validate` reports every one in the script rather than the first:
   `import X = A.B`, an alias, is plain TypeScript and runs.
 - **JSX.** A script is TypeScript, not TSX; JSX is recognised and refused by
   name rather than reported as the stray `<` TypeScript reads it as.
+- **What TypeScript 7 removed:** `module Foo { }` as a namespace (write
+  `namespace Foo { }`; `declare module "x" { }` and `declare global { }` are
+  still accepted), and import assertions, `assert { type: "json" }` on an
+  import or re-export (write `with { ... }`).
 
 ## Positions
 
