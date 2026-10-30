@@ -35,8 +35,8 @@ const REMOVED_BASE_FUNCTIONS: [&str; 4] = ["load", "dofile", "loadfile", "collec
 pub fn removed_global_message(name: &str) -> String {
     format!(
         "the '{name}' global was removed in v3; run the script codemod \
-         (Settings → Scripts → Migrate, or happyview-codemod) -- see the \
-         Migrating scripts guide"
+         (Migrate on the script's page under Integrations → Scripts, or \
+         happyview-codemod) -- see the Migrating scripts guide"
     )
 }
 
