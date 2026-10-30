@@ -18,7 +18,7 @@ use happyview_plugin_sdk::{
 const METHODS: [&str; 6] = ["get", "post", "put", "patch", "delete", "head"];
 
 library_plugin! {
-    info: PluginInfo::new("happyview-http", "HTTP Client", "1.0.0"),
+    info: PluginInfo::new("happyview-http", "HTTP Client", "0.1.0"),
     surface: surface,
     call: dispatch,
 }
