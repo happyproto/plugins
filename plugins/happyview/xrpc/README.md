@@ -25,6 +25,10 @@ end
 - `query(method[, params])` — an XRPC query (GET), as the calling user.
 - `procedure(method[, input[, params]])` — an XRPC procedure (POST), as the
   calling user.
+- `session()` — the calling user's account as their own PDS reports it
+  (`com.atproto.server.getSession`): `{did, handle?, email?, email_confirmed?}`.
+  `email` is there only when the user's session was granted
+  `transition:email` and the account has one; its absence is not an error.
 
 Neither builds the request itself; both hand the method, input and query
 parameters straight to the host, which resolves where the call goes and
@@ -49,7 +53,9 @@ including ones that change their account. A procedure this instance doesn't
 serve is forwarded to the NSID's authority without the user's credentials.
 Grant it only to scripts an operator trusts with the user's whole account.
 
-Imports exactly `host_caller_xrpc_query`, `host_caller_xrpc_procedure`.
+Imports exactly `host_caller_xrpc_query`, `host_caller_get_session`,
+`host_caller_xrpc_procedure`. `session()` needs `caller:read` and a caller
+session (`NO_SESSION` otherwise).
 
 ## Build
 

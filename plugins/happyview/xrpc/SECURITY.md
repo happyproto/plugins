@@ -10,7 +10,7 @@ It declares `caller:read` and `caller:call`, and the repo README puts it in the 
 
 The plugin doesn't build requests or hold credentials. It passes the method, input and params to the host, which resolves where the call goes and signs it as the caller. A procedure this instance doesn't serve is forwarded to the NSID's authority without the user's credentials.
 
-It imports exactly `host_caller_xrpc_query` and `host_caller_xrpc_procedure`. Like every HappyView plugin, it runs sandboxed in WASM with no filesystem access, and the loader refuses a module whose imports need more than its manifest declares.
+It imports exactly `host_caller_xrpc_query`, `host_caller_get_session` and `host_caller_xrpc_procedure`. `session()` reads only the account fields of the caller's own `getSession`: DID, handle, and the email address when their session was granted `transition:email`. Like every HappyView plugin, it runs sandboxed in WASM with no filesystem access, and the loader refuses a module whose imports need more than its manifest declares.
 
 ## What's worth reporting
 
