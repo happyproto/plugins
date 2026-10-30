@@ -20,6 +20,7 @@ end
 
 - `query(method[, params])` makes an XRPC query (GET).
 - `procedure(method[, input[, params]])` makes an XRPC procedure call (POST).
+- `session()` returns the calling user's account as their PDS reports it, `{did, handle?}`. Their email address is `happyview-account`'s `email()`, which needs its own capability.
 
 Neither builds the request. Both pass the method, input and params to the host.
 

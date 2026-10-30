@@ -59,7 +59,8 @@ Library plugins expose functions to HappyView scripts (`require("<namespace>")` 
 | `happyview-backlinks` | `happyview.backlinks` | `records:read`              | `to(uri)` builder                                          |
 | `happyview-blobs` | `happyview.blobs` | `blobs:read`, `blobs:write` | `put(bytes, mime_type)`, `get(cid)`, `stat(cid)`, `exists(cid)` |
 | `happyview-record` | `happyview.record` | `caller:write`, `records:read`, `records:write` | `create`, `put`, `delete`, `upload_blob`, `load`, `save_local`, `delete_local`, `validate` |
-| `happyview-xrpc` | `happyview.xrpc` | `caller:read`, `caller:call` | `query(method, params?)`, `procedure(method, input?, params?)` |
+| `happyview-xrpc` | `happyview.xrpc` | `caller:read`, `caller:call` | `query(method, params?)`, `procedure(method, input?, params?)`, `session()` |
+| `happyview-account` | `happyview.account` | `caller:email` | `email()` |
 | `happyview-atproto` | `happyview.atproto` | `atproto:read`, `attest:sign` | `resolve_service_endpoint`, `blob_download`, `get_labels`, `get_labels_batch`, `sign`, `verify_signature` |
 | `happyview-linked-repos` | `happyview.linked_repos` | `linked_repos:use` | `list`, `get(did)` builder: `create_record`, `put_record`, `delete_record`, `upload_blob`, `call` |
 | `happyview-jobs` | `happyview.jobs` | `jobs:create`, `jobs:read`, `jobs:read_any` | `create(job_type, input, opts?)`, `get(id)`, `get_any(id)`, `list_any(opts?)` |

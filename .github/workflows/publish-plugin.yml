@@ -17,6 +17,7 @@ on:
         required: true
         type: choice
         options:
+          - account
           - atproto
           - auth-itch
           - auth-microsoft
