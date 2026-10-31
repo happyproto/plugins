@@ -18,9 +18,9 @@ mod sandbox;
 mod test;
 
 use happyview_plugin_sdk::{
-    interpreter_plugin, ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, PluginError,
-    PluginInfo, ScriptErrorKind, ScriptKind, ScriptValueKind, ValidateError, ValidateInput,
-    ValidateOutput,
+    interpreter_plugin, ChunkRole, ExecuteInput, ExecuteLimits, ExecuteOutput, ExecuteReport,
+    PluginError, PluginInfo, ScriptErrorKind, ScriptKind, ScriptValueKind, ValidateError,
+    ValidateInput, ValidateOutput,
 };
 
 const MISSING_HANDLE: &str = "script must define a handle() function";
@@ -35,9 +35,14 @@ const VALIDATE_LIMITS: ExecuteLimits = ExecuteLimits {
 
 interpreter_plugin! {
     info: PluginInfo::new("happyview-lua", "Lua", "0.1.0"),
-    execute: execute_script,
+    execute: execute_reported,
     validate: validate_source,
     declarations: declarations::declarations,
+}
+
+/// The `execute` export: a run and the instructions it used.
+fn execute_reported(input: &ExecuteInput) -> Result<ExecuteReport, PluginError> {
+    execute_counted(input, modules::host(), std::rc::Rc::new(test::Host))
 }
 
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
@@ -60,26 +65,46 @@ pub(crate) fn execute_in(
     resolver: Box<dyn modules::Resolver>,
     tests: std::rc::Rc<dyn test::TestHost>,
 ) -> Result<ExecuteOutput, PluginError> {
+    execute_counted(input, resolver, tests).map(|report| report.output)
+}
+
+/// A run, with the instructions it used when its budget is counted.
+pub(crate) fn execute_counted(
+    input: &ExecuteInput,
+    resolver: Box<dyn modules::Resolver>,
+    tests: std::rc::Rc<dyn test::TestHost>,
+) -> Result<ExecuteReport, PluginError> {
     let lua = sandbox::create(&input.removed_globals).map_err(interpreter_error)?;
     // The budget goes first: `internal.async` resumes through the catch guard
     // it installs, and takes it when `require` is installed.
     let budget = budget::install(&lua, &input.limits).map_err(interpreter_error)?;
-    require::install(&lua, &input.libraries).map_err(interpreter_error)?;
-    modules::install(&lua, &input.chunk_name, resolver).map_err(interpreter_error)?;
+    let output = run(&lua, input, resolver, tests, &budget)?;
+    Ok(output.with_instructions(budget.used()))
+}
+
+fn run(
+    lua: &mlua::Lua,
+    input: &ExecuteInput,
+    resolver: Box<dyn modules::Resolver>,
+    tests: std::rc::Rc<dyn test::TestHost>,
+    budget: &budget::Budget,
+) -> Result<ExecuteOutput, PluginError> {
+    require::install(lua, &input.libraries).map_err(interpreter_error)?;
+    modules::install(lua, &input.chunk_name, resolver).map_err(interpreter_error)?;
     let failed =
-        |default, e: &mlua::Error| script_failure(default, e, &budget, &modules::known(&lua));
+        |default, e: &mlua::Error| script_failure(default, e, budget, &modules::known(lua));
 
     // A test file's globals exist before its chunk runs, since `describe` is
     // called at file scope.
     let suite = match input.kind {
         ScriptKind::Test => {
-            Some(test::install(&lua, tests, &input.chunk_name).map_err(interpreter_error)?)
+            Some(test::install(lua, tests, &input.chunk_name).map_err(interpreter_error)?)
         }
         _ => None,
     };
 
     let main = chunk::load(
-        &lua,
+        lua,
         &input.chunk_name,
         &input.source,
         input.artifact.as_ref(),
@@ -91,7 +116,7 @@ pub(crate) fn execute_in(
 
     // A test file has no `handle`: running its collected tests is the run.
     if let Some(suite) = suite {
-        return Ok(match suite.run(&lua) {
+        return Ok(match suite.run(lua) {
             Ok(counts) => ExecuteOutput::Returned {
                 value: counts,
                 value_kind: ScriptValueKind::Object,
@@ -104,8 +129,8 @@ pub(crate) fn execute_in(
         return Ok(failure(ScriptErrorKind::MissingHandle, MISSING_HANDLE));
     };
 
-    let arguments = convert::to_lua(&lua, &input.input)
-        .and_then(|argument| Ok((argument, ctx::build(&lua, &input.context)?)));
+    let arguments = convert::to_lua(lua, &input.input)
+        .and_then(|argument| Ok((argument, ctx::build(lua, &input.context)?)));
     let arguments = match arguments {
         Ok(arguments) => arguments,
         // A ceiling small enough to refuse the arguments is the script's
@@ -127,7 +152,7 @@ pub(crate) fn execute_in(
     }
 
     let value_kind = value_kind(&returned);
-    match convert::to_json(&lua, returned) {
+    match convert::to_json(lua, returned) {
         Ok(value) => Ok(ExecuteOutput::Returned { value, value_kind }),
         Err(e) => Ok(failed(ScriptErrorKind::Runtime, &e)),
     }
