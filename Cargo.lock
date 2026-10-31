@@ -506,8 +506,8 @@ dependencies = [
 
 [[package]]
 name = "happyview-plugin-sdk"
-version = "0.4.0"
-source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#e3f4073849cb6d38b6ed92568f59e12e51bd091b"
+version = "0.5.0"
+source = "git+https://github.com/gamesgamesgamesgamesgames/happyview?branch=alpha#9cc4f901949e6325c3ac9271f3e3f62a2c25834a"
 dependencies = [
  "base64",
  "dlmalloc",
