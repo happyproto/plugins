@@ -3,6 +3,7 @@
 // being an error, which is how a wrong type that still compiles is caught.
 import type { Params, Output } from "happyview:lexicons/com.example.feed.getPosts";
 import type { Record as Post, Event } from "happyview:lexicons/com.example.feed.post";
+import type { Output as Listed } from "happyview:lexicons/com.example.feed.listRecords";
 import type { QueryCtx, JobCtx, RecordEvent } from "happyview:ctx";
 import * as db from "happyview.db";
 import * as record from "happyview.record";
@@ -59,4 +60,15 @@ export function onPost(event: Event): string | undefined {
   const generic: RecordEvent = event;
   void generic;
   return event.record?.text;
+}
+
+// A lexicon `unknown` is an index-signature object, so a library's records
+// and another lexicon's record have to fit it as they are.
+export async function listRecords(): Promise<Listed> {
+  const page = await db.records("com.example.feed.post").run();
+  const post: Post = { text: "", createdAt: "" };
+  // @ts-expect-error an `unknown` is an object, not a string
+  const bad: Listed = { records: ["text"] };
+  void bad;
+  return { records: [...page.records, post] };
 }
