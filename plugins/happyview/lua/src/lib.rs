@@ -45,12 +45,14 @@ fn execute_reported(input: &ExecuteInput) -> Result<ExecuteReport, PluginError> 
     execute_counted(input, modules::host(), std::rc::Rc::new(test::Host))
 }
 
+#[cfg(test)]
 fn execute_script(input: &ExecuteInput) -> Result<ExecuteOutput, PluginError> {
     execute_with(input, modules::host())
 }
 
 /// [`execute_script`] with relative `require`s resolved through `resolver`,
 /// which a test chooses.
+#[cfg(test)]
 pub(crate) fn execute_with(
     input: &ExecuteInput,
     resolver: Box<dyn modules::Resolver>,
@@ -60,6 +62,7 @@ pub(crate) fn execute_with(
 
 /// [`execute_with`] with the host a test file reports to chosen as well, so a
 /// native test can record what a test file reported.
+#[cfg(test)]
 pub(crate) fn execute_in(
     input: &ExecuteInput,
     resolver: Box<dyn modules::Resolver>,
