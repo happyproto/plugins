@@ -343,6 +343,24 @@ jobs:
             echo "wasm=$(node release/release-config.mjs wasm "$DIR")"
           } >> "$GITHUB_OUTPUT"
 
+      # semantic-release writes the notes only to the GitHub release, and
+      # hpy publishes the CHANGELOG.md entry for the version as its changelog
+      # document. This copies the notes into the workspace's CHANGELOG.md
+      # (never committed) under `## <version>`. The repo variable
+      # PUBLISH_CHANGELOGS turns it on: `all`, or plugin names such as `db`.
+      # Unset, the entry is only printed and no document is published.
+      - name: Write the changelog entry for happyview/${{ matrix.plugin }}
+        if: steps.release.outputs.new-release-published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.new-release-git-tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PLUGIN: ${{ matrix.plugin }}
+          PUBLISH_CHANGELOGS: ${{ vars.PUBLISH_CHANGELOGS }}
+        run: |
+          gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/notes.md"
+          node release/changelog.mjs "plugins/happyview/$PLUGIN" "$VERSION" "$PLUGIN" "$RUNNER_TEMP/notes.md"
+
       - name: Publish happyview/${{ matrix.plugin }} to the registry
         if: steps.release.outputs.new-release-published == 'true'
         uses: happyproto/actions/plugin-publish@v1
