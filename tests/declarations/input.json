@@ -709,6 +709,32 @@
       "nsid": "com.example.feed.getPosts"
     },
     {
+      "defs": {},
+      "description": "List any records",
+      "kind": "query",
+      "main": {
+        "output": {
+          "kind": "object",
+          "properties": [
+            {
+              "name": "records",
+              "required": true,
+              "type": {
+                "items": {
+                  "kind": "map",
+                  "values": {
+                    "kind": "unknown"
+                  }
+                },
+                "kind": "array"
+              }
+            }
+          ]
+        }
+      },
+      "nsid": "com.example.feed.listRecords"
+    },
+    {
       "defs": {
         "image": {
           "kind": "object",

@@ -287,19 +287,23 @@ fn doc(out: &mut String, indent: &str, description: Option<&str>) {
     }
 }
 
-/// An `interface` for an object, a `type` for anything else.
+/// A `type` for every data shape. An object is written as a type alias
+/// rather than an `interface`: TypeScript lets an object type alias fill a
+/// lexicon `unknown` (`{ [key: string]: unknown }`), but not an interface,
+/// which has no implicit index signature. So a script can return a library's
+/// records, or one lexicon's record, through another lexicon's `unknown`.
 fn declare(out: &mut String, name: &str, description: Option<&str>, t: &TypeExpr, names: &Names) {
     doc(out, "  ", description);
     match t {
-        TypeExpr::Object(object) => interface(out, name, object, names),
+        TypeExpr::Object(object) => object_alias(out, name, object, names),
         other => {
             let _ = writeln!(out, "  export type {name} = {};", ty(other, names));
         }
     }
 }
 
-fn interface(out: &mut String, name: &str, object: &ObjectType, names: &Names) {
-    let _ = writeln!(out, "  export interface {name} {{");
+fn object_alias(out: &mut String, name: &str, object: &ObjectType, names: &Names) {
+    let _ = writeln!(out, "  export type {name} = {{");
     for p in &object.properties {
         doc(out, "    ", p.description.as_deref());
         let _ = writeln!(
@@ -310,7 +314,7 @@ fn interface(out: &mut String, name: &str, object: &ObjectType, names: &Names) {
             ty(&p.ty, names)
         );
     }
-    let _ = writeln!(out, "  }}");
+    let _ = writeln!(out, "  }};");
 }
 
 /// A parameter list. TypeScript refuses a required parameter after an
@@ -578,21 +582,22 @@ const JOB: &str = "  /** The job this run is, and its controls */
   }
 ";
 
+// Type aliases, like `declare`'s objects, so they fit a lexicon `unknown`.
 const VALUES: &str = "  /** A blob, as a record holds one */
-  export interface Blob {
+  export type Blob = {
     $type: \"blob\";
     ref: CidLink;
     mimeType: string;
     size: number;
-  }
+  };
   /** A CID link, as a record holds one */
-  export interface CidLink {
+  export type CidLink = {
     $link: string;
-  }
+  };
   /** Bytes, as a record holds them: base64 */
-  export interface Bytes {
+  export type Bytes = {
     $bytes: string;
-  }
+  };
 ";
 
 #[cfg(test)]
@@ -719,10 +724,10 @@ mod tests {
 /** Read the index */
 declare module \"happyview.db\" {
   /** An indexed record */
-  export interface Envelope {
+  export type Envelope = {
     uri: string;
     cid?: string | null;
-  }
+  };
   /**
    * One record by URI
    * @param uri AT URI
