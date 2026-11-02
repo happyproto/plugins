@@ -43,8 +43,8 @@ read alike in Lua, but the distinction is real on the wire.
 
 | trigger | `ctx` also carries |
 | --- | --- |
-| XRPC query | `method`, `collection` |
-| XRPC procedure | `method`, `collection`, `params`, `delegate_did` |
+| XRPC query | `method` |
+| XRPC procedure | `method`, `params`, `delegate_did` |
 | record event | `collection` |
 | label | — |
 | job | `job` |
