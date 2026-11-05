@@ -42,7 +42,7 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 # The SDK is not published, so it comes from the branch HappyView's v3 work
 # lives on until it is.
-happyview-plugin-sdk = { git = "https://github.com/gamesgamesgamesgamesgames/happyview", branch = "alpha" }
+happyview-plugin-sdk = { git = "https://github.com/gamesgamesgamesgamesgames/happyview", branch = "beta" }
 
 # QuickJS-ng compiles its stack check out under WASI, so a script's runaway
 # recursion traps the JavaScript interpreter instead of throwing a
