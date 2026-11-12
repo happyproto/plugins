@@ -33,9 +33,17 @@ local lexicon = record.lexicon("app.bsky.feed.post")   -- table or nil
 - `upload_blob(bytes, mime_type)` — `bytes` is a string or `{"$bytes": "<base64>"}`;
   returns the PDS's blob ref, as-is.
 - `load(uri)` — one indexed record, or nil.
-- `save_local(collection, rkey, tbl[, did])` — writes straight into the local
-  index, bypassing the PDS. `did` defaults to the calling user; required when
-  called with no caller (a label or record-event script).
+- `save_local(collection, rkey, tbl[, did[, opts]])` — writes straight into
+  the local index, bypassing the PDS. `did` defaults to the calling user;
+  required when called with no caller (a label or record-event script).
+  `opts.cid` is the CID the network gave for this record, such as
+  `com.atproto.repo.listRecords` answers, for a script that copies another
+  repo's records into the index: stored when the row is new, so strongRefs to
+  it verify. An update keeps the CID already stored, as the host does, and
+  the returned ref reports the one the row carries. A `cid` that is not
+  shaped like a CID (base32 multibase, `b` then lowercase letters and the
+  digits 2-7) is refused as `BAD_INPUT`. Pass `nil` for `did` to keep the
+  caller's while giving `opts`.
 - `delete_local(uri)` — removes from the local index. Returns whether a row
   was actually there.
 - `validate(collection, tbl)` — normalizes and checks a record without
@@ -62,8 +70,8 @@ keeps it.
 accepts them, so a script sees its own write on its next `load` (or any
 `happyview.db` read): `create` and `put` upsert the row with the PDS's
 `cid`, and `delete` removes it. `indexed_at` stays nil until the network
-echoes the record. A `save_local` row has neither `cid` nor `indexed_at`
-until then. A mirror failure is logged and does not fail the write.
+echoes the record. A `save_local` row has no `indexed_at` until then, and no
+`cid` unless `opts.cid` gave one. A mirror failure is logged and does not fail the write.
 
 ## Validation
 
@@ -88,8 +96,9 @@ the required-field check when `opts.validate` is `false`; the other two
 
 ## Errors
 
-- `BAD_INPUT` — a malformed argument (collection, uri, record, bytes, or a
-  `save_local` with no `did` and no caller), raised before any host call.
+- `BAD_INPUT` — a malformed argument (collection, uri, record, bytes, a
+  `save_local` with no `did` and no caller, or a `save_local` `opts.cid`
+  that is not a CID), raised before any host call.
 - `INVALID_RECORD` — a required lexicon field is missing, naming which.
 - `NO_SESSION` — no caller to act as (a label or record-event script calling
   `create`/`put`/`delete`/`upload_blob`).

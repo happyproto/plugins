@@ -45,7 +45,7 @@ fn surface() -> ApiSurface {
                 {"name": "did", "type": "string", "description": "The repo it is in"},
                 {"name": "collection", "type": "string", "description": "Its collection NSID"},
                 {"name": "rkey", "type": "string", "description": "Its record key"},
-                {"name": "cid", "type": "string?", "description": "Its CID; a PDS write carries it at once, a save_local row has none"},
+                {"name": "cid", "type": "string?", "description": "Its CID; a PDS write carries it at once, a save_local row only when opts.cid gave one"},
                 {"name": "indexed_at", "type": "string?", "description": "When the network's copy was indexed; null until the network echoes the record"},
                 {"name": "record", "type": "object", "description": "The stored body"}
             ]}),
@@ -96,6 +96,7 @@ fn surface() -> ApiSurface {
                 .param("rkey", "string", "Record key")
                 .param("record", "object", "Record body")
                 .param("did", "string?", "Repo DID; defaults to the calling user")
+                .param_json(save_local_opts())
                 .returns(record_ref_shape()),
         )
         .export(
@@ -134,6 +135,12 @@ fn put_opts() -> Value {
     json!({"name": "opts", "type": "object?", "description": "Put options", "properties": [
         {"name": "swap_cid", "type": "string?", "description": "Refuse unless this is the record's current CID"},
         {"name": "validate", "type": "boolean?", "description": "Left out: checked here, and by the PDS when it can resolve the lexicon. true: also strictly by the PDS. false: not checked"}
+    ]})
+}
+
+fn save_local_opts() -> Value {
+    json!({"name": "opts", "type": "object?", "description": "Local save options", "properties": [
+        {"name": "cid", "type": "string?", "description": "The CID the network gave for this record, such as listRecords answers. Stored only when the record is not indexed yet: an update keeps the stored CID, which the returned ref reports"}
     ]})
 }
 
@@ -237,6 +244,8 @@ fn save_local(args: &[Value], ctx: &CallContext) -> Result<Value, PluginError> {
             PluginError::bad_input("did is required: pass one, or call this as a user")
         })?;
 
+    let cid = cid_opt(opts_arg(args, 4)?)?;
+
     let lexicon = host::lexicon_get(&collection)?.unwrap_or(Value::Null);
     let record = validate::normalize(&lexicon, &collection, record, false)?;
 
@@ -245,11 +254,42 @@ fn save_local(args: &[Value], ctx: &CallContext) -> Result<Value, PluginError> {
         rkey,
         did: Some(did),
         record,
-        // A local-only save never round-tripped through a PDS, so it has no
-        // CID to offer; the row carries none until the network echoes it.
-        cid: None,
+        // A local-only save has no CID of its own. A script that copies a
+        // record it fetched from the network can hand over the CID the
+        // network gave, so strongRefs to the row verify. The host stores it
+        // on insert only: an update keeps the stored CID, since that one
+        // describes the version the network holds, and the returned ref
+        // reads it back so the script sees which CID the row carries.
+        cid,
     })?;
     Ok(record_ref_value(result))
+}
+
+/// `opts.cid` for `save_local`, checked for a CID's shape before it reaches
+/// the host: absent is `None`; anything given must be a string that looks
+/// like a CID, or the call is refused rather than storing a row whose
+/// strongRefs could never verify.
+fn cid_opt(opts: &Value) -> Result<Option<String>, PluginError> {
+    match &opts["cid"] {
+        Value::Null => Ok(None),
+        Value::String(cid) if is_cid(cid) => Ok(Some(cid.clone())),
+        _ => Err(PluginError::bad_input(
+            "opts.cid must be a CID: base32 multibase, a b followed by 8 to 127 lowercase letters or digits 2-7",
+        )),
+    }
+}
+
+/// A CIDv1 as atproto writes it: base32 lowercase multibase (`b` then
+/// `a-z`/`2-7`), within a sane length. Only the shape; the host and the
+/// network decide what it names.
+fn is_cid(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix('b') else {
+        return false;
+    };
+    (8..=127).contains(&rest.len())
+        && rest
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || (b'2'..=b'7').contains(&c))
 }
 
 fn delete_local(args: &[Value]) -> Result<Value, PluginError> {
@@ -428,6 +468,77 @@ mod tests {
         let args = [json!("not an object")];
         let err = opts_arg(&args, 0).unwrap_err();
         assert_eq!(err.code, "BAD_INPUT");
+    }
+
+    const CID: &str = "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
+
+    #[test]
+    fn cid_opt_is_none_without_opts_or_without_a_cid() {
+        assert_eq!(cid_opt(&Value::Null).unwrap(), None);
+        assert_eq!(cid_opt(&json!({})).unwrap(), None);
+        assert_eq!(cid_opt(&json!({"cid": null})).unwrap(), None);
+    }
+
+    #[test]
+    fn cid_opt_passes_a_cid_through() {
+        assert_eq!(
+            cid_opt(&json!({"cid": CID})).unwrap(),
+            Some(CID.to_string())
+        );
+        let raw = "bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
+        assert_eq!(
+            cid_opt(&json!({"cid": raw})).unwrap(),
+            Some(raw.to_string())
+        );
+    }
+
+    #[test]
+    fn cid_opt_refuses_what_is_not_a_cid() {
+        for bad in [
+            json!(""),
+            json!("b"),
+            json!("bafy"),
+            json!("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"),
+            json!("BAFYREIGH2AKISCAILDCQABSYG3DFR6CHU3FGPREGIYMSCK7E7AQA4S52ZY"),
+            json!("bafyrei-not-a-cid"),
+            json!("bafyrei189"),
+            json!(alloc::format!("b{}", "a".repeat(128))),
+            json!(7),
+            json!({"$link": CID}),
+        ] {
+            let err = cid_opt(&json!({ "cid": bad })).unwrap_err();
+            assert_eq!(err.code, "BAD_INPUT", "{bad} was accepted");
+        }
+    }
+
+    #[test]
+    fn save_local_refuses_a_malformed_cid_before_any_host_call() {
+        // Only argument checks run before the host is reached, so a call
+        // that would otherwise need the host fails here with BAD_INPUT.
+        let args = [
+            json!("app.test.thing"),
+            json!("xyz"),
+            json!({}),
+            json!("did:plc:abc"),
+            json!({"cid": "not-a-cid"}),
+        ];
+        let err = save_local(&args, &CallContext::default()).unwrap_err();
+        assert_eq!(err.code, "BAD_INPUT");
+    }
+
+    #[test]
+    fn save_local_refuses_opts_that_are_not_an_object() {
+        let args = [
+            json!("app.test.thing"),
+            json!("xyz"),
+            json!({}),
+            json!("did:plc:abc"),
+            json!("bafyrei"),
+        ];
+        assert_eq!(
+            save_local(&args, &CallContext::default()).unwrap_err().code,
+            "BAD_INPUT"
+        );
     }
 
     #[test]
