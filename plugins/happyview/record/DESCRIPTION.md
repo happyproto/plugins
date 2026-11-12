@@ -19,7 +19,7 @@ You see your own writes right away. `create`, `put` and `delete` mirror into the
 - `create(collection, tbl[, opts])` and `put(uri, tbl[, opts])` return `{uri, cid}`. `put` takes `opts.swap_cid` and refuses the write unless it matches the current CID.
 - `delete(uri)` deletes from the user's repo, and `upload_blob(bytes, mime_type)` returns the PDS's blob ref.
 - `load(uri)` returns `{uri, did, collection, rkey, cid, indexed_at, record}`, or nil.
-- `save_local(collection, rkey, tbl[, did])` and `delete_local(uri)` skip the PDS and write the index directly. They also work in label and record-event scripts, which have no user to act as (pass `save_local` a `did` there).
+- `save_local(collection, rkey, tbl[, did[, opts]])` and `delete_local(uri)` skip the PDS and write the index directly. They also work in label and record-event scripts, which have no user to act as (pass `save_local` a `did` there). `opts.cid` stores the CID the network gave for a record you copy into the index, when the row is new.
 - `validate(collection, tbl)` normalizes and checks a record without writing it.
 - `lexicon(collection)` returns the stored lexicon document, or nil.
 

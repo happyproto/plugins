@@ -3687,6 +3687,42 @@
                   ],
                   "open": false
                 }
+              },
+              {
+                "description": "Local save options",
+                "name": "opts",
+                "required": false,
+                "type": {
+                  "kind": "union",
+                  "members": [
+                    {
+                      "kind": "object",
+                      "properties": [
+                        {
+                          "description": "The CID the network gave for this record, such as listRecords answers. Stored only when the record is not indexed yet: an update keeps the stored CID, which the returned ref reports",
+                          "name": "cid",
+                          "required": false,
+                          "type": {
+                            "kind": "union",
+                            "members": [
+                              {
+                                "kind": "string"
+                              },
+                              {
+                                "kind": "null"
+                              }
+                            ],
+                            "open": false
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  "open": false
+                }
               }
             ],
             "returns": {
@@ -3841,7 +3877,7 @@
                   }
                 },
                 {
-                  "description": "Its CID; a PDS write carries it at once, a save_local row has none",
+                  "description": "Its CID; a PDS write carries it at once, a save_local row only when opts.cid gave one",
                   "name": "cid",
                   "required": false,
                   "type": {
