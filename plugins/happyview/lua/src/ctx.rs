@@ -1,11 +1,12 @@
 //! The second argument of `handle`. Everything in it is data and arrives in
 //! the execute input — except `ctx.job`'s three functions, which act on the
-//! job row while the script is still running and so are host imports. The
-//! host holds the job id for the whole run, so a script cannot name another
-//! job.
+//! job row while the script is still running, and `ctx.caller_assertion`,
+//! which asks the host about the run's caller. Those are host imports. The
+//! host holds the job id and the caller for the whole run, so a script cannot
+//! name another job or another caller.
 
-use happyview_plugin_sdk::{host, ExecuteContext, JobProgressRequest};
-use mlua::{Lua, Result as LuaResult, Table, Value};
+use happyview_plugin_sdk::{host, CallerAssertionRequest, ExecuteContext, JobProgressRequest};
+use mlua::{IntoLuaMulti, Lua, Result as LuaResult, Table, Value};
 
 use crate::convert;
 
@@ -24,6 +25,7 @@ pub fn build(lua: &Lua, context: &ExecuteContext) -> LuaResult<Table> {
 
     if let Some(caller_did) = &context.caller_did {
         ctx.set("caller_did", caller_did.as_str())?;
+        ctx.set("caller_assertion", caller_assertion(lua)?)?;
     }
     if let Some(method) = &context.method {
         ctx.set("method", method.as_str())?;
@@ -55,6 +57,26 @@ pub fn build(lua: &Lua, context: &ExecuteContext) -> LuaResult<Table> {
     }
 
     Ok(ctx)
+}
+
+/// `ctx.caller_assertion(audience)`: a signed statement, from the instance,
+/// of who called this script and with which key, for the service named by
+/// `audience`. Returns the token, or `nil` and the reason the instance gave:
+/// an audience it doesn't allow, a caller who didn't sign in with DPoP, or
+/// assertions turned off.
+fn caller_assertion(lua: &Lua) -> LuaResult<mlua::Function> {
+    lua.create_function(|lua, audience: String| {
+        match host::caller_assertion(&CallerAssertionRequest { audience }) {
+            Ok(assertion) => (
+                Value::String(lua.create_string(&assertion.token)?),
+                Value::Nil,
+            )
+                .into_lua_multi(lua),
+            Err(e) => {
+                (Value::Nil, Value::String(lua.create_string(&e.message)?)).into_lua_multi(lua)
+            }
+        }
+    })
 }
 
 fn job_table(lua: &Lua, id: &str) -> LuaResult<Table> {
@@ -118,6 +140,7 @@ mod tests {
         assert_eq!(eval::<String>(&lua, "return type(ctx.env)"), "table");
         for absent in [
             "caller_did",
+            "caller_assertion",
             "collection",
             "params",
             "delegate_did",
@@ -157,6 +180,27 @@ mod tests {
             ),
             "did:plc:me|true|k|app.test.p|app.test.rec|x|did:plc:delegate|did:plc:auth|t"
         );
+    }
+
+    /// Off wasm there's no host to ask, so the call reports why instead of
+    /// raising, the same way a refusal from the host comes back.
+    #[test]
+    fn a_caller_can_ask_for_an_assertion_and_hears_why_not() {
+        let lua = ctx_vm(json!({
+            "trigger": "xrpc.procedure:app.test.p",
+            "caller_did": "did:plc:me",
+            "method": "app.test.p",
+        }));
+        assert_eq!(
+            eval::<String>(&lua, "return type(ctx.caller_assertion)"),
+            "function"
+        );
+        let (token, reason): (Value, String) = lua
+            .load(r#"return ctx.caller_assertion("https://service.example")"#)
+            .eval()
+            .unwrap();
+        assert!(token.is_nil());
+        assert!(!reason.is_empty());
     }
 
     #[test]
