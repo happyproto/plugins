@@ -63,10 +63,10 @@ pub fn build(lua: &Lua, context: &ExecuteContext) -> LuaResult<Table> {
 /// instance, of who called this script and with which key, for the service
 /// named by `audience`. With `key_proof`, a proof the caller made of a key of
 /// their own, the statement names that key instead of the caller's DPoP key;
-/// the script passes it through as it arrived. Returns the token, or `nil`
-/// and the reason the instance gave: an audience it doesn't allow, a caller
-/// who didn't sign in with DPoP, a refused key proof, or assertions turned
-/// off.
+/// the script passes it through as it arrived. Returns the token, or `nil`,
+/// the reason the instance gave and its error code: an audience it doesn't
+/// allow, a caller who didn't sign in with DPoP, a refused key proof
+/// (`BAD_INPUT`), or assertions turned off.
 fn caller_assertion(lua: &Lua) -> LuaResult<mlua::Function> {
     lua.create_function(|lua, (audience, key_proof): (String, Option<String>)| {
         match host::caller_assertion(&CallerAssertionRequest {
@@ -78,9 +78,12 @@ fn caller_assertion(lua: &Lua) -> LuaResult<mlua::Function> {
                 Value::Nil,
             )
                 .into_lua_multi(lua),
-            Err(e) => {
-                (Value::Nil, Value::String(lua.create_string(&e.message)?)).into_lua_multi(lua)
-            }
+            Err(e) => (
+                Value::Nil,
+                Value::String(lua.create_string(&e.message)?),
+                Value::String(lua.create_string(&e.code)?),
+            )
+                .into_lua_multi(lua),
         }
     })
 }
@@ -205,9 +208,10 @@ mod tests {
             r#"return ctx.caller_assertion("https://service.example")"#,
             r#"return ctx.caller_assertion("https://service.example", "a.key.proof")"#,
         ] {
-            let (token, reason): (Value, String) = lua.load(call).eval().unwrap();
+            let (token, reason, code): (Value, String, String) = lua.load(call).eval().unwrap();
             assert!(token.is_nil(), "{call}");
             assert!(!reason.is_empty(), "{call}");
+            assert!(!code.is_empty(), "{call}");
         }
     }
 
