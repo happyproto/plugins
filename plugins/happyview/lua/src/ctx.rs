@@ -59,14 +59,20 @@ pub fn build(lua: &Lua, context: &ExecuteContext) -> LuaResult<Table> {
     Ok(ctx)
 }
 
-/// `ctx.caller_assertion(audience)`: a signed statement, from the instance,
-/// of who called this script and with which key, for the service named by
-/// `audience`. Returns the token, or `nil` and the reason the instance gave:
-/// an audience it doesn't allow, a caller who didn't sign in with DPoP, or
-/// assertions turned off.
+/// `ctx.caller_assertion(audience, key_proof?)`: a signed statement, from the
+/// instance, of who called this script and with which key, for the service
+/// named by `audience`. With `key_proof`, a proof the caller made of a key of
+/// their own, the statement names that key instead of the caller's DPoP key;
+/// the script passes it through as it arrived. Returns the token, or `nil`
+/// and the reason the instance gave: an audience it doesn't allow, a caller
+/// who didn't sign in with DPoP, a refused key proof, or assertions turned
+/// off.
 fn caller_assertion(lua: &Lua) -> LuaResult<mlua::Function> {
-    lua.create_function(|lua, audience: String| {
-        match host::caller_assertion(&CallerAssertionRequest { audience }) {
+    lua.create_function(|lua, (audience, key_proof): (String, Option<String>)| {
+        match host::caller_assertion(&CallerAssertionRequest {
+            audience,
+            key_proof,
+        }) {
             Ok(assertion) => (
                 Value::String(lua.create_string(&assertion.token)?),
                 Value::Nil,
@@ -195,12 +201,14 @@ mod tests {
             eval::<String>(&lua, "return type(ctx.caller_assertion)"),
             "function"
         );
-        let (token, reason): (Value, String) = lua
-            .load(r#"return ctx.caller_assertion("https://service.example")"#)
-            .eval()
-            .unwrap();
-        assert!(token.is_nil());
-        assert!(!reason.is_empty());
+        for call in [
+            r#"return ctx.caller_assertion("https://service.example")"#,
+            r#"return ctx.caller_assertion("https://service.example", "a.key.proof")"#,
+        ] {
+            let (token, reason): (Value, String) = lua.load(call).eval().unwrap();
+            assert!(token.is_nil(), "{call}");
+            assert!(!reason.is_empty(), "{call}");
+        }
     }
 
     #[test]

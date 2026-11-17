@@ -475,7 +475,7 @@ fn host_file(input: &DeclarationsInput, lexicons: &BTreeMap<&str, &LexiconDeclar
 /// `ctx.caller_assertion`, which the interpreter adds itself when the run has
 /// a caller.
 const CALLER_ASSERTION: &str = "\
----@field caller_assertion? fun(audience: string): string?, string? A signed statement, from this instance, of who called and with which key, for `audience`; or nil and why not
+---@field caller_assertion? fun(audience: string, key_proof?: string): string?, string? A signed statement, from this instance, of who called and with which key (the key `key_proof` proves, if given), for `audience`; or nil and why not
 ";
 
 /// `ctx.job`, whose three functions the interpreter adds itself.
@@ -723,7 +723,9 @@ return M
         );
         assert!(host.contains("function Job.should_stop() end"), "{host}");
         assert!(
-            host.contains("---@field caller_assertion? fun(audience: string): string?, string?"),
+            host.contains(
+                "---@field caller_assertion? fun(audience: string, key_proof?: string): string?, string?"
+            ),
             "{host}"
         );
         assert!(host.contains("---@class happyview.QueryCtx\n"), "{host}");
